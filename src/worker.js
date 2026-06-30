@@ -141,7 +141,8 @@ async function getRoute(url, env) {
     `?api_key=${encodeURIComponent(env.ORS_API_KEY)}` +
     `&start=${startLng},${startLat}&end=${endLng},${endLat}`;
 
-  const res = await fetch(orsUrl, { headers: { Accept: 'application/json' } });
+  // ORSはデフォルトのAccept(application/json)だと406エラーになるため、geo+jsonを明示的に指定する
+  const res = await fetch(orsUrl, { headers: { Accept: 'application/geo+json, application/json' } });
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`OpenRouteService APIエラー: HTTP ${res.status} ${text}`);
