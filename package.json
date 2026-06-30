@@ -1,0 +1,12 @@
+{
+  "name": "gas-split-app",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ガソリン代割り勘アプリ（Cloudflare Workers + 静的サイト + 週次価格自動取得Cron）",
+  "dependencies": {
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}
