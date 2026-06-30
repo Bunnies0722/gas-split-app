@@ -384,6 +384,38 @@
     <p class="note">※出発地点・到着地点から実際の道路距離を自動計算した値です。手入力で調整することもできます。この距離を使ってガソリン代を計算します。</p>
   </div>
 
+  <!-- ===== グループカード ===== -->
+  <div class="card" id="groupCard">
+    <h2>👥 グループ</h2>
+
+    <div id="groupNotLoaded">
+      <p class="note">グループを作っておくと、メンバー名や精算履歴をいつでも呼び出せます。作らなくても通常通り使えます。</p>
+      <label for="groupNameInput">グループ名（任意）</label>
+      <input id="groupNameInput" type="text" placeholder="例：箱根ドライブ">
+      <label for="memberInput">メンバー（改行で1人ずつ入力）</label>
+      <textarea id="memberInput" rows="3" placeholder="ゆうき&#10;たろう&#10;はなこ" style="width:100%;font-family:inherit;font-size:14px;padding:9px 10px;border:1.5px solid var(--card-border);border-radius:8px;background:#FBFAF6;"></textarea>
+      <button id="createGroupBtn" type="button" style="margin-top:12px;">グループを作成</button>
+    </div>
+
+    <div id="groupLoaded" style="display:none;">
+      <p class="note">グループ名：<strong id="groupNameDisplay">-</strong></p>
+      <label for="memberEditInput">メンバー（改行で1人ずつ入力）</label>
+      <textarea id="memberEditInput" rows="3" style="width:100%;font-family:inherit;font-size:14px;padding:9px 10px;border:1.5px solid var(--card-border);border-radius:8px;background:#FBFAF6;"></textarea>
+      <button id="saveMembersBtn" type="button" style="margin-top:8px;">メンバーを保存</button>
+      <p class="note">このURLを友達に共有すると、同じグループ・履歴を見られます：</p>
+      <div class="search-row">
+        <input id="groupShareUrl" type="text" readonly>
+        <button id="copyGroupUrlBtn" type="button">📋</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 履歴カード ===== -->
+  <div class="card" id="historyCard" style="display:none;">
+    <h2>📖 履歴</h2>
+    <div id="historyList"></div>
+  </div>
+
   <!-- ===== 計算条件カード ===== -->
   <div class="card">
     <h2>🚗 車・人数の情報</h2>
@@ -421,6 +453,7 @@
     <textarea id="lineText" readonly></textarea>
     <button id="copyBtn" type="button">📋 精算用テキストをコピー</button>
     <div id="copyStatus"></div>
+    <button id="saveHistoryBtn" type="button" style="display:none; margin-top:10px; background: var(--success);">📖 この精算をグループの履歴に保存</button>
   </div>
 
   <p class="attr">地図データ &copy; OpenStreetMap contributors</p>
@@ -445,6 +478,7 @@ let endLatLng = null;
 let routeLine = null; // 2点を結ぶ直線
 let startPrefecture = null; // 出発地点の都道府県（地域平均価格の算出に使う）
 let endPrefecture = null;   // 到着地点の都道府県
+let lastCalcResult = null;  // 直近の計算結果（履歴保存に使う）
 
 // 都道府県 → 資源エネルギー庁の9地域区分（経済産業局の管轄と一致）
 const PREFECTURE_TO_REGION = {
@@ -815,6 +849,7 @@ document.getElementById('calcBtn').addEventListener('click', () => {
     alert(err.message);
     return;
   }
+  lastCalcResult = calcResult;
 
   document.getElementById('rDistance').textContent = formatKm(distanceKm);
   document.getElementById('rTotal').textContent = formatYen(calcResult.totalCostYen);
@@ -848,6 +883,193 @@ document.getElementById('copyBtn').addEventListener('click', async () => {
     document.getElementById('copyStatus').textContent = 'コピーしました！';
   }
 });
+
+// =========================================================
+// 3. グループ・履歴機能（Cloudflare Worker経由のSupabase）
+//    ログイン不要。グループ作成時に発行される「共有コード」をURLの
+//    ?group=コード に付けて友達に渡すことで、同じグループ・履歴にアクセスできる。
+// =========================================================
+let currentGroup = null; // { id, code, name, members: [...], trips: [...] }
+
+function getGroupCodeFromUrl() {
+  return new URLSearchParams(window.location.search).get('group');
+}
+
+async function loadGroup(code) {
+  try {
+    const res = await fetch(`/api/groups/${encodeURIComponent(code)}`);
+    const data = await res.json();
+    if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
+    currentGroup = data;
+    renderGroupLoaded();
+    renderHistory();
+  } catch (err) {
+    console.warn('グループの読み込みに失敗しました:', err);
+    alert('グループの読み込みに失敗しました。URLが正しいか確認してください。');
+  }
+}
+
+function renderGroupLoaded() {
+  document.getElementById('groupNotLoaded').style.display = 'none';
+  document.getElementById('groupLoaded').style.display = 'block';
+  document.getElementById('groupNameDisplay').textContent = currentGroup.name || '(名称未設定)';
+  document.getElementById('memberEditInput').value = currentGroup.members.map((m) => m.name).join('\n');
+
+  const shareUrl = `${window.location.origin}${window.location.pathname}?group=${currentGroup.code}`;
+  document.getElementById('groupShareUrl').value = shareUrl;
+
+  // メンバー数を人数欄に反映（手入力で上書き可）
+  if (currentGroup.members.length > 0) {
+    document.getElementById('people').value = currentGroup.members.length;
+  }
+
+  document.getElementById('saveHistoryBtn').style.display = 'block';
+}
+
+document.getElementById('createGroupBtn').addEventListener('click', async () => {
+  const name = document.getElementById('groupNameInput').value.trim();
+  const members = document.getElementById('memberInput').value
+    .split('\n').map((s) => s.trim()).filter(Boolean);
+
+  const btn = document.getElementById('createGroupBtn');
+  btn.disabled = true;
+  btn.textContent = '作成中…';
+  try {
+    const res = await fetch('/api/groups', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, members }),
+    });
+    const data = await res.json();
+    if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
+
+    // URLにコードを反映してから、グループ情報を読み込む
+    const url = new URL(window.location.href);
+    url.searchParams.set('group', data.code);
+    window.history.replaceState({}, '', url);
+
+    await loadGroup(data.code);
+  } catch (err) {
+    alert('グループの作成に失敗しました。もう一度お試しください。');
+    console.error(err);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'グループを作成';
+  }
+});
+
+document.getElementById('saveMembersBtn').addEventListener('click', async () => {
+  if (!currentGroup) return;
+  const members = document.getElementById('memberEditInput').value
+    .split('\n').map((s) => s.trim()).filter(Boolean);
+
+  const btn = document.getElementById('saveMembersBtn');
+  btn.disabled = true;
+  btn.textContent = '保存中…';
+  try {
+    const res = await fetch(`/api/groups/${currentGroup.code}/members`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ members }),
+    });
+    const data = await res.json();
+    if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
+
+    currentGroup.members = members.map((name, i) => ({ name, sort_order: i }));
+    if (members.length > 0) document.getElementById('people').value = members.length;
+    alert('メンバーを保存しました。');
+  } catch (err) {
+    alert('メンバーの保存に失敗しました。');
+    console.error(err);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'メンバーを保存';
+  }
+});
+
+document.getElementById('copyGroupUrlBtn').addEventListener('click', async () => {
+  const url = document.getElementById('groupShareUrl').value;
+  try {
+    await navigator.clipboard.writeText(url);
+  } catch (err) {
+    const input = document.getElementById('groupShareUrl');
+    input.select();
+    document.execCommand('copy');
+  }
+});
+
+function renderHistory() {
+  const card = document.getElementById('historyCard');
+  const list = document.getElementById('historyList');
+  if (!currentGroup || !currentGroup.trips || currentGroup.trips.length === 0) {
+    card.style.display = 'none';
+    return;
+  }
+  card.style.display = 'block';
+  list.innerHTML = currentGroup.trips.map((t) => {
+    const date = t.created_at ? new Date(t.created_at).toLocaleDateString('ja-JP') : '';
+    const route = (t.start_label && t.end_label) ? `${t.start_label} → ${t.end_label}` : '';
+    return `
+      <div class="result-row" style="display:block; padding: 10px 0;">
+        <div style="display:flex; justify-content:space-between; font-size:12px; color:var(--text-secondary);">
+          <span>${date}</span>
+          <span>${t.distance_km != null ? Number(t.distance_km).toFixed(1) + 'km' : ''}</span>
+        </div>
+        <div style="font-size:13px; margin-top:2px;">${route}</div>
+        <div style="display:flex; justify-content:space-between; margin-top:4px;">
+          <span style="font-size:12.5px; color:var(--text-secondary);">合計 ${t.total_cost_yen != null ? formatYen(t.total_cost_yen) : '-'}</span>
+          <span style="font-weight:700; color:var(--accent);">1人 ${t.per_person_yen != null ? formatYen(t.per_person_yen) : '-'}</span>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+document.getElementById('saveHistoryBtn').addEventListener('click', async () => {
+  if (!currentGroup) return;
+  const from = document.getElementById('startLabel').textContent;
+  const to = document.getElementById('endLabel').textContent;
+  const btn = document.getElementById('saveHistoryBtn');
+  btn.disabled = true;
+  btn.textContent = '保存中…';
+  try {
+    const res = await fetch(`/api/groups/${currentGroup.code}/trips`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        startLabel: from === '未設定' ? null : from,
+        startLat: startLatLng ? startLatLng.lat : null,
+        startLng: startLatLng ? startLatLng.lng : null,
+        endLabel: to === '未設定' ? null : to,
+        endLat: endLatLng ? endLatLng.lat : null,
+        endLng: endLatLng ? endLatLng.lng : null,
+        distanceKm: Number(document.getElementById('distance').value) || null,
+        fuelType: document.getElementById('fuelType').value,
+        unitPricePerL: Number(document.getElementById('price').value) || null,
+        efficiencyKmPerL: Number(document.getElementById('efficiency').value) || null,
+        peopleCount: Number(document.getElementById('people').value) || null,
+        totalCostYen: lastCalcResult ? lastCalcResult.totalCostYen : null,
+        perPersonYen: lastCalcResult ? lastCalcResult.perPersonYen : null,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
+
+    currentGroup.trips = currentGroup.trips || [];
+    currentGroup.trips.unshift(data);
+    renderHistory();
+    document.getElementById('copyStatus').textContent = '履歴に保存しました！';
+  } catch (err) {
+    alert('履歴の保存に失敗しました。');
+    console.error(err);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '📖 この精算をグループの履歴に保存';
+  }
+});
+
+// ページ読み込み時、URLに ?group=コード があれば自動でグループを読み込む
+const initialGroupCode = getGroupCodeFromUrl();
+if (initialGroupCode) loadGroup(initialGroupCode);
 </script>
 
 </body>

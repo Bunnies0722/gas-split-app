@@ -12,11 +12,24 @@
  *    フロント（prototype/index.html）からはAPIキーを直接呼ばず、必ずこのエンドポイント経由にすることで
  *    APIキーをブラウザに公開しないようにしている。
  *
+ * 4. /api/groups 以下のエンドポイントで、グループ（メンバー名）と精算履歴をSupabase（Postgres）に保存する。
+ *    ログイン不要。グループ作成時に発行されるランダムな共有コードが、そのままアクセス権のような役割を果たす
+ *    （コードを知っている人だけが読み書きできる、URL共有型の設計）。SupabaseのService Role Keyは
+ *    Worker側だけが保持し、フロントには一切渡さない。
+ *      - POST   /api/groups                  グループ作成（name, members[]） → { id, code, name, members }
+ *      - GET    /api/groups/:code             グループ情報＋メンバー＋履歴を取得
+ *      - PUT    /api/groups/:code/members     メンバー一覧を入れ替え
+ *      - POST   /api/groups/:code/trips       精算履歴を1件追加
+ *
  * 必要なSecret（Cloudflareダッシュボード or `wrangler secret put` で設定）：
  *   - GITHUB_TOKEN: prototype/price.json を書き込めるGitHub Personal Access Token
  *                   （Fine-grained PAT、対象リポジトリに Contents: Read and write 権限）
  *   - ORS_API_KEY: OpenRouteService（openrouteservice.org）の無料APIキー
  *                  （Directions APIを使うために必要。無料枠で1日2500回まで利用可）
+ *   - SUPABASE_URL: SupabaseプロジェクトのURL（例：https://xxxxx.supabase.co）
+ *   - SUPABASE_SERVICE_ROLE_KEY: SupabaseのService Role Key（Project Settings → API）
+ *                  ※RLSを有効にしテーブルへのポリシーを作らないことで、このキーを持たない
+ *                    フロント側からは一切アクセスできないようにしている。
  *
  * 動作確認用に、GET /__cron-test?key=<GITHUB_TOKENと同じ値> を呼ぶと、
  * Cron同じ処理を即時実行できる（本番運用前のテスト用）。
@@ -70,6 +83,45 @@ export default {
           status: 502,
           headers: { 'content-type': 'application/json; charset=utf-8' },
         });
+      }
+    }
+
+    // グループ作成（メンバー名を保存する“箱”を作る）
+    if (url.pathname === '/api/groups' && request.method === 'POST') {
+      try {
+        return await createGroup(request, env);
+      } catch (err) {
+        return jsonResponse({ error: err.message }, 502);
+      }
+    }
+
+    // グループ情報＋メンバー＋履歴の取得
+    const groupMatch = url.pathname.match(/^\/api\/groups\/([A-Za-z0-9]+)$/);
+    if (groupMatch && request.method === 'GET') {
+      try {
+        return await getGroupInfo(groupMatch[1], env);
+      } catch (err) {
+        return jsonResponse({ error: err.message }, 502);
+      }
+    }
+
+    // メンバー一覧の入れ替え
+    const membersMatch = url.pathname.match(/^\/api\/groups\/([A-Za-z0-9]+)\/members$/);
+    if (membersMatch && request.method === 'PUT') {
+      try {
+        return await updateGroupMembers(membersMatch[1], request, env);
+      } catch (err) {
+        return jsonResponse({ error: err.message }, 502);
+      }
+    }
+
+    // 精算履歴の追加
+    const tripsMatch = url.pathname.match(/^\/api\/groups\/([A-Za-z0-9]+)\/trips$/);
+    if (tripsMatch && request.method === 'POST') {
+      try {
+        return await createTrip(tripsMatch[1], request, env);
+      } catch (err) {
+        return jsonResponse({ error: err.message }, 502);
       }
     }
 
@@ -161,6 +213,174 @@ async function getRoute(url, env) {
   return new Response(JSON.stringify({ distanceKm, geometry }), {
     headers: { 'content-type': 'application/json; charset=utf-8' },
   });
+}
+
+function jsonResponse(obj, status = 200) {
+  return new Response(JSON.stringify(obj), {
+    status,
+    headers: { 'content-type': 'application/json; charset=utf-8' },
+  });
+}
+
+// 0/O/1/I/l など見間違えやすい文字を除いたコード用アルファベット
+const GROUP_CODE_ALPHABET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+
+function generateGroupCode(length = 8) {
+  const bytes = new Uint8Array(length);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => GROUP_CODE_ALPHABET[b % GROUP_CODE_ALPHABET.length]).join('');
+}
+
+function numOrNull(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+// SupabaseのREST API（PostgREST）をService Role Keyで呼び出す共通ヘルパー。
+// このキーはRLSをバイパスできるため、Worker内だけで使い、フロントには絶対に渡さない。
+async function supabaseFetch(env, path, options = {}) {
+  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) {
+    throw new Error('SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY シークレットが設定されていません。');
+  }
+  return fetch(`${env.SUPABASE_URL}/rest/v1/${path}`, {
+    ...options,
+    headers: {
+      apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+      Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+      'Content-Type': 'application/json',
+      ...(options.headers || {}),
+    },
+  });
+}
+
+// 共有コードからグループ行（id, code, name）を1件取得する。見つからなければnull。
+async function getGroupByCode(code, env) {
+  const res = await supabaseFetch(env, `groups?code=eq.${encodeURIComponent(code)}&select=id,code,name,created_at`);
+  if (!res.ok) throw new Error(`Supabaseエラー（グループ取得）: HTTP ${res.status} ${await res.text()}`);
+  const rows = await res.json();
+  return rows[0] || null;
+}
+
+// POST /api/groups: グループを新規作成し、共有コードとメンバーを返す。
+async function createGroup(request, env) {
+  const body = await request.json().catch(() => ({}));
+  const name = typeof body.name === 'string' && body.name.trim() ? body.name.trim().slice(0, 100) : null;
+  const members = Array.isArray(body.members)
+    ? body.members.map((m) => String(m).trim()).filter(Boolean).slice(0, 30)
+    : [];
+
+  let group = null;
+  for (let attempt = 0; attempt < 5 && !group; attempt++) {
+    const code = generateGroupCode();
+    const res = await supabaseFetch(env, 'groups', {
+      method: 'POST',
+      headers: { Prefer: 'return=representation' },
+      body: JSON.stringify({ code, name }),
+    });
+    if (res.status === 201) {
+      const rows = await res.json();
+      group = rows[0];
+    } else if (res.status === 409) {
+      continue; // コード重複（極めて稀）。別のコードで再試行。
+    } else {
+      throw new Error(`Supabaseエラー（グループ作成）: HTTP ${res.status} ${await res.text()}`);
+    }
+  }
+  if (!group) throw new Error('グループコードの生成に失敗しました。もう一度お試しください。');
+
+  if (members.length > 0) {
+    const memberRows = members.map((memberName, i) => ({ group_id: group.id, name: memberName, sort_order: i }));
+    const res = await supabaseFetch(env, 'group_members', {
+      method: 'POST',
+      headers: { Prefer: 'return=representation' },
+      body: JSON.stringify(memberRows),
+    });
+    if (!res.ok) throw new Error(`Supabaseエラー（メンバー登録）: HTTP ${res.status} ${await res.text()}`);
+  }
+
+  return jsonResponse({
+    id: group.id,
+    code: group.code,
+    name: group.name,
+    members: members.map((memberName, i) => ({ name: memberName, sort_order: i })),
+  });
+}
+
+// GET /api/groups/:code: グループ情報・メンバー一覧・履歴（最新50件）を返す。
+async function getGroupInfo(code, env) {
+  const group = await getGroupByCode(code, env);
+  if (!group) return jsonResponse({ error: 'グループが見つかりません。' }, 404);
+
+  const [membersRes, tripsRes] = await Promise.all([
+    supabaseFetch(env, `group_members?group_id=eq.${group.id}&select=id,name,sort_order&order=sort_order.asc`),
+    supabaseFetch(env, `trips?group_id=eq.${group.id}&select=*&order=created_at.desc&limit=50`),
+  ]);
+  if (!membersRes.ok) throw new Error(`Supabaseエラー（メンバー取得）: HTTP ${membersRes.status} ${await membersRes.text()}`);
+  if (!tripsRes.ok) throw new Error(`Supabaseエラー（履歴取得）: HTTP ${tripsRes.status} ${await tripsRes.text()}`);
+
+  const members = await membersRes.json();
+  const trips = await tripsRes.json();
+
+  return jsonResponse({ id: group.id, code: group.code, name: group.name, members, trips });
+}
+
+// PUT /api/groups/:code/members: メンバー一覧を丸ごと入れ替える（小規模なので削除→再挿入の単純な方式）。
+async function updateGroupMembers(code, request, env) {
+  const group = await getGroupByCode(code, env);
+  if (!group) return jsonResponse({ error: 'グループが見つかりません。' }, 404);
+
+  const body = await request.json().catch(() => ({}));
+  const members = Array.isArray(body.members)
+    ? body.members.map((m) => String(m).trim()).filter(Boolean).slice(0, 30)
+    : [];
+
+  const delRes = await supabaseFetch(env, `group_members?group_id=eq.${group.id}`, { method: 'DELETE' });
+  if (!delRes.ok) throw new Error(`Supabaseエラー（メンバー削除）: HTTP ${delRes.status} ${await delRes.text()}`);
+
+  if (members.length > 0) {
+    const memberRows = members.map((memberName, i) => ({ group_id: group.id, name: memberName, sort_order: i }));
+    const insRes = await supabaseFetch(env, 'group_members', {
+      method: 'POST',
+      headers: { Prefer: 'return=representation' },
+      body: JSON.stringify(memberRows),
+    });
+    if (!insRes.ok) throw new Error(`Supabaseエラー（メンバー登録）: HTTP ${insRes.status} ${await insRes.text()}`);
+  }
+
+  return jsonResponse({ ok: true, members: members.map((memberName, i) => ({ name: memberName, sort_order: i })) });
+}
+
+// POST /api/groups/:code/trips: 精算結果を履歴として1件追加する。
+async function createTrip(code, request, env) {
+  const group = await getGroupByCode(code, env);
+  if (!group) return jsonResponse({ error: 'グループが見つかりません。' }, 404);
+
+  const body = await request.json().catch(() => ({}));
+  const row = {
+    group_id: group.id,
+    start_label: body.startLabel || null,
+    start_lat: numOrNull(body.startLat),
+    start_lng: numOrNull(body.startLng),
+    end_label: body.endLabel || null,
+    end_lat: numOrNull(body.endLat),
+    end_lng: numOrNull(body.endLng),
+    distance_km: numOrNull(body.distanceKm),
+    fuel_type: body.fuelType || null,
+    unit_price_per_l: numOrNull(body.unitPricePerL),
+    efficiency_km_per_l: numOrNull(body.efficiencyKmPerL),
+    people_count: numOrNull(body.peopleCount),
+    total_cost_yen: numOrNull(body.totalCostYen),
+    per_person_yen: numOrNull(body.perPersonYen),
+  };
+
+  const res = await supabaseFetch(env, 'trips', {
+    method: 'POST',
+    headers: { Prefer: 'return=representation' },
+    body: JSON.stringify(row),
+  });
+  if (!res.ok) throw new Error(`Supabaseエラー（履歴保存）: HTTP ${res.status} ${await res.text()}`);
+  const rows = await res.json();
+  return jsonResponse(rows[0], 201);
 }
 
 function findLatestXlsxUrl(html) {
