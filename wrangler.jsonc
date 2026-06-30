@@ -1,0 +1,8 @@
+{
+  "name": "gas-split-app",
+  "compatibility_date": "2026-06-30",
+  "assets": {
+    "directory": "./prototype",
+    "not_found_handling": "404-page"
+  }
+}
