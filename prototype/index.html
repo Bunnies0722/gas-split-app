@@ -623,21 +623,40 @@ async function doSearch() {
   }
 }
 
-// 2点が揃ったら直線を描画し、距離（km）を自動計算してフォームに反映
-function updateRouteAndDistance() {
+// 2点が揃ったら実際の道路に沿ったルートを取得して描画し、距離（km）をフォームに反映する。
+// サーバー（Cloudflare Worker経由のOpenRouteService）への問い合わせに失敗した場合は、
+// 従来どおり直線距離（Haversine）にフォールバックし、アプリ自体は止めない。
+async function updateRouteAndDistance() {
   if (routeLine) { map.removeLayer(routeLine); routeLine = null; }
+  if (!startLatLng || !endLatLng) return;
 
-  if (startLatLng && endLatLng) {
+  const hint = document.querySelector('.map-hint');
+
+  try {
+    const res = await fetch(
+      `/api/route?startLat=${startLatLng.lat}&startLng=${startLatLng.lng}&endLat=${endLatLng.lat}&endLng=${endLatLng.lng}`
+    );
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    if (data.error || !data.geometry || !data.geometry.length) throw new Error(data.error || 'ルート取得失敗');
+
+    routeLine = L.polyline(data.geometry, {
+      color: '#CC7A52',
+      weight: 4,
+    }).addTo(map);
+    document.getElementById('distance').value = data.distanceKm.toFixed(1);
+  } catch (err) {
+    console.warn('道路ルートの取得に失敗したため、直線距離で代用します:', err);
     routeLine = L.polyline([startLatLng, endLatLng], {
       color: '#CC7A52',
       weight: 3,
       dashArray: '6 6',
     }).addTo(map);
-    map.fitBounds(routeLine.getBounds(), { padding: [24, 24] });
-
     const km = haversineKm(startLatLng.lat, startLatLng.lng, endLatLng.lat, endLatLng.lng);
     document.getElementById('distance').value = km.toFixed(1);
   }
+
+  map.fitBounds(routeLine.getBounds(), { padding: [24, 24] });
 }
 
 // 2点間の直線距離（km）をHaversine公式で計算

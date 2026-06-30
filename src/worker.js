@@ -7,9 +7,16 @@
  *    → このコミットがCloudflareのGit連携の再デプロイを自動的にトリガーするので、
  *      手動でnode実行・git push・再デプロイをする必要がなくなる。
  *
+ * 3. GET /api/route で、出発地点・到着地点の緯度経度からOpenRouteService Directions APIを呼び、
+ *    実際の道路に沿ったルート（geometry）と道路距離（km）を返す。
+ *    フロント（prototype/index.html）からはAPIキーを直接呼ばず、必ずこのエンドポイント経由にすることで
+ *    APIキーをブラウザに公開しないようにしている。
+ *
  * 必要なSecret（Cloudflareダッシュボード or `wrangler secret put` で設定）：
  *   - GITHUB_TOKEN: prototype/price.json を書き込めるGitHub Personal Access Token
  *                   （Fine-grained PAT、対象リポジトリに Contents: Read and write 権限）
+ *   - ORS_API_KEY: OpenRouteService（openrouteservice.org）の無料APIキー
+ *                  （Directions APIを使うために必要。無料枠で1日2500回まで利用可）
  *
  * 動作確認用に、GET /__cron-test?key=<GITHUB_TOKENと同じ値> を呼ぶと、
  * Cron同じ処理を即時実行できる（本番運用前のテスト用）。
@@ -50,6 +57,19 @@ export default {
         });
       } catch (err) {
         return new Response(`Error: ${err.message}\n${err.stack || ''}`, { status: 500 });
+      }
+    }
+
+    // 道路距離・道路沿いの経路取得（OpenRouteService Directions APIへのプロキシ）
+    // フロント側からAPIキーを隠すため、Worker経由で呼び出す。
+    if (url.pathname === '/api/route') {
+      try {
+        return await getRoute(url, env);
+      } catch (err) {
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 502,
+          headers: { 'content-type': 'application/json; charset=utf-8' },
+        });
       }
     }
 
@@ -96,6 +116,50 @@ async function updateGasPrice(env) {
 
   await commitToGitHub(env, result);
   return result;
+}
+
+// /api/route?startLat=..&startLng=..&endLat=..&endLng=.. を受け取り、
+// OpenRouteService Directions APIで実際の道路に沿ったルートと距離を取得して返す。
+// レスポンス: { distanceKm: number, geometry: [[lat, lng], ...] }
+async function getRoute(url, env) {
+  if (!env.ORS_API_KEY) {
+    throw new Error('ORS_API_KEY シークレットが設定されていません。');
+  }
+
+  const startLat = parseFloat(url.searchParams.get('startLat'));
+  const startLng = parseFloat(url.searchParams.get('startLng'));
+  const endLat = parseFloat(url.searchParams.get('endLat'));
+  const endLng = parseFloat(url.searchParams.get('endLng'));
+
+  if ([startLat, startLng, endLat, endLng].some((v) => Number.isNaN(v))) {
+    throw new Error('startLat/startLng/endLat/endLng が不正です。');
+  }
+
+  // ORSは経度,緯度の順
+  const orsUrl =
+    `https://api.openrouteservice.org/v2/directions/driving-car` +
+    `?api_key=${encodeURIComponent(env.ORS_API_KEY)}` +
+    `&start=${startLng},${startLat}&end=${endLng},${endLat}`;
+
+  const res = await fetch(orsUrl, { headers: { Accept: 'application/json' } });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`OpenRouteService APIエラー: HTTP ${res.status} ${text}`);
+  }
+  const data = await res.json();
+
+  const feature = data.features && data.features[0];
+  if (!feature) {
+    throw new Error('ルートが見つかりませんでした。');
+  }
+
+  const distanceKm = feature.properties.summary.distance / 1000;
+  // GeoJSONは[lng, lat]の順なので、Leafletで使う[lat, lng]の順に入れ替える
+  const geometry = feature.geometry.coordinates.map(([lng, lat]) => [lat, lng]);
+
+  return new Response(JSON.stringify({ distanceKm, geometry }), {
+    headers: { 'content-type': 'application/json; charset=utf-8' },
+  });
 }
 
 function findLatestXlsxUrl(html) {
