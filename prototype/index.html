@@ -1,0 +1,835 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ガソリン代 自動割り勘</title>
+
+<!-- 地図表示用ライブラリ Leaflet（無料・APIキー不要） -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+
+<!-- 見出し用フォント（Claudeの雰囲気に寄せたセリフ体） -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<style>
+  /* ===== Claude風カラーパレット ===== */
+  :root {
+    --bg: #F7F4EC;
+    --card-bg: #FFFFFF;
+    --card-border: #E9E3D6;
+    --text-primary: #2B2622;
+    --text-secondary: #786F60;
+    --accent: #CC7A52;
+    --accent-hover: #B5673F;
+    --accent-soft: #F1E2D6;
+    --start-color: #B5673F;
+    --end-color: #5C7A63;
+    --success: #5C7A63;
+    --shadow: 0 1px 2px rgba(43, 38, 34, 0.04), 0 4px 16px rgba(43, 38, 34, 0.06);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    font-family: "Inter", "Hiragino Sans", "Meiryo", sans-serif;
+    background: var(--bg);
+    color: var(--text-primary);
+    margin: 0;
+    padding: 32px 16px 64px;
+  }
+
+  .container {
+    max-width: 480px;
+    margin: 0 auto;
+  }
+
+  header {
+    text-align: center;
+    margin-bottom: 28px;
+  }
+
+  header .icon {
+    font-size: 32px;
+  }
+
+  header h1 {
+    font-family: "Source Serif 4", serif;
+    font-weight: 600;
+    font-size: 24px;
+    margin: 8px 0 4px;
+    letter-spacing: -0.01em;
+  }
+
+  header p {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin: 0;
+  }
+
+  .card {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 16px;
+    padding: 20px;
+    margin-bottom: 16px;
+    box-shadow: var(--shadow);
+  }
+
+  .card h2 {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0 0 14px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  /* ----- 地図カード ----- */
+  #map {
+    width: 100%;
+    height: 260px;
+    border-radius: 12px;
+    margin-bottom: 12px;
+    border: 1px solid var(--card-border);
+  }
+
+  .search-row {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 12px;
+  }
+
+  .search-row input {
+    flex: 1;
+  }
+
+  .search-row button {
+    flex-shrink: 0;
+    width: auto;
+    padding: 0 14px;
+    background: var(--text-primary);
+  }
+
+  .point-buttons {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+
+  .point-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .geo-btn {
+    border: 1.5px solid var(--card-border);
+    background: #FBFAF6;
+    color: var(--text-secondary);
+    border-radius: 8px;
+    padding: 7px 8px;
+    font-size: 11.5px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .geo-btn:hover {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    color: var(--accent-hover);
+  }
+
+  .geo-btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+
+  .point-btn {
+    border: 1.5px solid var(--card-border);
+    background: #FBFAF6;
+    color: var(--text-primary);
+    border-radius: 10px;
+    padding: 10px 8px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-align: left;
+  }
+
+  .point-btn .dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 6px;
+  }
+
+  .point-btn.start .dot { background: var(--start-color); }
+  .point-btn.end .dot { background: var(--end-color); }
+
+  .point-btn.active {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+  }
+
+  .point-btn .label-name {
+    display: block;
+    font-size: 11px;
+    font-weight: 400;
+    color: var(--text-secondary);
+    margin-top: 3px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .map-hint {
+    font-size: 11.5px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+    margin: 0 0 4px;
+  }
+
+  .distance-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 10px;
+    padding-top: 12px;
+    border-top: 1px solid var(--card-border);
+  }
+
+  .distance-row label {
+    font-size: 12.5px;
+    color: var(--text-secondary);
+    margin: 0;
+  }
+
+  .distance-row input {
+    width: 90px;
+    text-align: right;
+    font-weight: 600;
+  }
+
+  /* ----- フォーム共通 ----- */
+  label {
+    display: block;
+    font-size: 12.5px;
+    color: var(--text-secondary);
+    margin-top: 12px;
+    margin-bottom: 4px;
+  }
+
+  label:first-of-type { margin-top: 0; }
+
+  input, select {
+    width: 100%;
+    padding: 9px 10px;
+    font-size: 14px;
+    font-family: inherit;
+    color: var(--text-primary);
+    box-sizing: border-box;
+    border: 1.5px solid var(--card-border);
+    border-radius: 8px;
+    background: #FBFAF6;
+  }
+
+  input:focus, select:focus {
+    outline: none;
+    border-color: var(--accent);
+    background: #fff;
+  }
+
+  .note {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-top: 4px;
+  }
+
+  .row2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  button {
+    width: 100%;
+    padding: 12px;
+    font-size: 14.5px;
+    font-weight: 600;
+    font-family: inherit;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: background 0.15s ease;
+  }
+
+  button:hover { background: var(--accent-hover); }
+  button:active { transform: scale(0.99); }
+
+  #calcBtn { margin-top: 18px; }
+
+  /* ----- 結果カード ----- */
+  .result-card { display: none; }
+  .result-card.show { display: block; }
+
+  .result-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-size: 13.5px;
+    color: var(--text-secondary);
+    padding: 9px 0;
+    border-bottom: 1px solid var(--card-border);
+  }
+  .result-row:last-of-type { border-bottom: none; }
+
+  .result-row .value {
+    font-weight: 700;
+    color: var(--text-primary);
+    font-size: 15px;
+  }
+
+  .result-row.highlight .value {
+    color: var(--accent);
+    font-size: 20px;
+  }
+
+  #lineText {
+    width: 100%;
+    height: 130px;
+    margin-top: 12px;
+    font-size: 13px;
+    font-family: inherit;
+    resize: vertical;
+    line-height: 1.6;
+  }
+
+  #copyBtn {
+    background: var(--success);
+    margin-top: 10px;
+  }
+  #copyBtn:hover { background: #4a6450; }
+
+  #copyStatus {
+    text-align: center;
+    font-size: 12px;
+    color: var(--success);
+    height: 16px;
+    margin-top: 6px;
+    font-weight: 600;
+  }
+
+  .attr {
+    text-align: center;
+    font-size: 10.5px;
+    color: var(--text-secondary);
+    margin-top: 20px;
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+
+  <header>
+    <div class="icon">⛽</div>
+    <h1>ガソリン代 自動割り勘</h1>
+    <p>地図で出発地点・到着地点を選んでサクッと精算</p>
+  </header>
+
+  <!-- ===== 地図カード ===== -->
+  <div class="card">
+    <h2>📍 ルートを選ぶ</h2>
+
+    <div class="search-row">
+      <input id="searchInput" type="text" placeholder="地名・施設名で検索（例：富士急ハイランド）">
+      <button id="searchBtn" type="button">検索</button>
+    </div>
+
+    <div id="map"></div>
+
+    <p class="map-hint">①「出発地点」または「到着地点」ボタンを押す → ②地図をクリックして場所を指定。検索した場合は地図が移動するので、その後クリックで確定します。「現在地」ボタンを押せば、地図を使わずスマホの位置情報からそのまま記録できます。</p>
+
+    <div class="point-buttons">
+      <div class="point-group">
+        <button class="point-btn start" id="setStartBtn" type="button">
+          <span><span class="dot"></span>出発地点</span>
+          <span class="label-name" id="startLabel">未設定</span>
+        </button>
+        <button class="geo-btn" id="startGeoBtn" type="button">📍 現在地にする</button>
+      </div>
+      <div class="point-group">
+        <button class="point-btn end" id="setEndBtn" type="button">
+          <span><span class="dot"></span>到着地点</span>
+          <span class="label-name" id="endLabel">未設定</span>
+        </button>
+        <button class="geo-btn" id="endGeoBtn" type="button">📍 現在地にする</button>
+      </div>
+    </div>
+    <p class="note">※現在地の取得には位置情報の利用許可が必要です。ブラウザの仕様上、HTTPS接続（またはlocalhost）でないと動作しない場合があります。</p>
+
+    <div class="distance-row">
+      <label for="distance" style="margin:0;">走行距離（km）</label>
+      <input id="distance" type="number" min="0" step="0.1" placeholder="-">
+    </div>
+    <p class="note">※地図上の2点間の直線距離から自動計算した概算値です。実際の道路距離に合わせて手入力で調整できます（正確な道路距離の自動計算は今後のアップデートで対応予定）。この距離を使ってガソリン代を計算します。</p>
+  </div>
+
+  <!-- ===== 計算条件カード ===== -->
+  <div class="card">
+    <h2>🚗 車・人数の情報</h2>
+
+    <label for="fuelType">油種</label>
+    <select id="fuelType">
+      <option value="regular">レギュラー</option>
+      <option value="highoctane">ハイオク</option>
+      <option value="diesel">軽油</option>
+    </select>
+
+    <label for="price">単価（円/L）</label>
+    <input id="price" type="number" min="0" step="0.1" placeholder="例：170">
+    <p class="note" id="priceStatus">資源エネルギー庁の最新データを確認中…</p>
+
+    <label for="efficiency">燃費（km/L）</label>
+    <input id="efficiency" type="number" min="0" step="0.1" value="15">
+    <p class="note">※未給油でも計算できるよう、目安として15km/Lを入力しています。自分の車の燃費が分かれば書き換えてください（給油した場合はレシートの数値から逆算すると正確です）。</p>
+
+    <label for="people">割り勘する人数</label>
+    <input id="people" type="number" min="1" step="1" placeholder="例：4">
+
+    <button id="calcBtn" type="button">計算する</button>
+  </div>
+
+  <!-- ===== 結果カード ===== -->
+  <div class="card result-card" id="result">
+    <h2>💰 精算結果</h2>
+
+    <div class="result-row"><span>総走行距離</span><span class="value" id="rDistance">-</span></div>
+    <div class="result-row"><span>合計ガソリン代</span><span class="value" id="rTotal">-</span></div>
+    <div class="result-row highlight"><span>1人あたり</span><span class="value" id="rPerPerson">-</span></div>
+
+    <label for="lineText">精算用テキスト（LINEなどに貼れます）</label>
+    <textarea id="lineText" readonly></textarea>
+    <button id="copyBtn" type="button">📋 精算用テキストをコピー</button>
+    <div id="copyStatus"></div>
+  </div>
+
+  <p class="attr">地図データ &copy; OpenStreetMap contributors</p>
+</div>
+
+<script>
+// =========================================================
+// 1. 地図のセットアップ（Leaflet + OpenStreetMap、APIキー不要）
+// =========================================================
+const map = L.map('map', { zoomControl: true }).setView([35.681, 139.767], 6); // 初期表示：日本全体が見える程度
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '&copy; OpenStreetMap contributors',
+  maxZoom: 18,
+}).addTo(map);
+
+// 出発地点・到着地点用のマーカー（最初はまだ置かない）
+let startMarker = null;
+let endMarker = null;
+let startLatLng = null;
+let endLatLng = null;
+let routeLine = null; // 2点を結ぶ直線
+let startPrefecture = null; // 出発地点の都道府県（地域平均価格の算出に使う）
+let endPrefecture = null;   // 到着地点の都道府県
+
+// 都道府県 → 資源エネルギー庁の9地域区分（経済産業局の管轄と一致）
+const PREFECTURE_TO_REGION = {
+  '北海道': '北海道',
+  '青森県': '東北', '岩手県': '東北', '宮城県': '東北', '秋田県': '東北', '山形県': '東北', '福島県': '東北',
+  '茨城県': '関東', '栃木県': '関東', '群馬県': '関東', '埼玉県': '関東', '千葉県': '関東', '東京都': '関東', '神奈川県': '関東',
+  '新潟県': '中部', '富山県': '中部', '石川県': '中部', '福井県': '中部', '山梨県': '中部', '長野県': '中部', '岐阜県': '中部', '静岡県': '中部', '愛知県': '中部',
+  '三重県': '近畿', '滋賀県': '近畿', '京都府': '近畿', '大阪府': '近畿', '兵庫県': '近畿', '奈良県': '近畿', '和歌山県': '近畿',
+  '鳥取県': '中国', '島根県': '中国', '岡山県': '中国', '広島県': '中国', '山口県': '中国',
+  '徳島県': '四国', '香川県': '四国', '愛媛県': '四国', '高知県': '四国',
+  '福岡県': '九州', '佐賀県': '九州', '長崎県': '九州', '熊本県': '九州', '大分県': '九州', '宮崎県': '九州', '鹿児島県': '九州',
+  '沖縄県': '沖縄',
+};
+
+function prefectureToRegion(prefecture) {
+  if (!prefecture) return null;
+  return PREFECTURE_TO_REGION[prefecture] || null;
+}
+
+// 出発=オレンジ系、到着=グリーン系のピンにする
+function makeDivIcon(color) {
+  return L.divIcon({
+    className: '',
+    html: `<div style="width:18px;height:18px;border-radius:50%;background:${color};border:3px solid white;box-shadow:0 1px 4px rgba(0,0,0,0.4);"></div>`,
+    iconSize: [18, 18],
+    iconAnchor: [9, 9],
+  });
+}
+
+// 現在、地図クリックでどちらの地点をセットするモードか（null / 'start' / 'end'）
+let pickMode = null;
+
+document.getElementById('setStartBtn').addEventListener('click', () => setPickMode('start'));
+document.getElementById('setEndBtn').addEventListener('click', () => setPickMode('end'));
+
+function setPickMode(mode) {
+  pickMode = mode;
+  document.getElementById('setStartBtn').classList.toggle('active', mode === 'start');
+  document.getElementById('setEndBtn').classList.toggle('active', mode === 'end');
+}
+
+// ----- 現在地ボタン -----
+// 地図をクリックする代わりに、スマホ/PCのブラウザが持つ位置情報をそのまま出発地点・到着地点にする。
+document.getElementById('startGeoBtn').addEventListener('click', () => useCurrentLocation('start'));
+document.getElementById('endGeoBtn').addEventListener('click', () => useCurrentLocation('end'));
+
+function useCurrentLocation(which) {
+  if (!navigator.geolocation) {
+    alert('お使いのブラウザは位置情報の取得に対応していません。地図をクリックして指定してください。');
+    return;
+  }
+
+  const btn = document.getElementById(which === 'start' ? 'startGeoBtn' : 'endGeoBtn');
+  const originalLabel = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '取得中…';
+
+  navigator.geolocation.getCurrentPosition(
+    (position) => {
+      const latlng = L.latLng(position.coords.latitude, position.coords.longitude);
+      map.setView(latlng, 15);
+      placePoint(which, latlng); // 既存のピン設置処理（マーカー設置・逆ジオコーディング・距離再計算）を再利用
+      btn.disabled = false;
+      btn.textContent = originalLabel;
+    },
+    (error) => {
+      btn.disabled = false;
+      btn.textContent = originalLabel;
+
+      let message = '現在地を取得できませんでした。地図をクリックして指定してください。';
+      if (error.code === error.PERMISSION_DENIED) {
+        message = '位置情報の利用が許可されていません。ブラウザの設定で位置情報を許可してから、もう一度お試しください。';
+      } else if (error.code === error.TIMEOUT) {
+        message = '位置情報の取得がタイムアウトしました。電波の良い場所でもう一度お試しください。';
+      } else if (error.code === error.POSITION_UNAVAILABLE) {
+        message = '現在地の取得に失敗しました（GPSが利用できない環境かもしれません）。';
+      }
+      alert(message);
+    },
+    { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+  );
+}
+
+// 地図クリックで現在のモードに応じてマーカーを置く
+map.on('click', (e) => {
+  if (pickMode === 'start') {
+    placePoint('start', e.latlng);
+  } else if (pickMode === 'end') {
+    placePoint('end', e.latlng);
+  } else {
+    // モード未選択の場合は何もしない（先にボタンを押してもらう）
+  }
+});
+
+// 地点を置く処理（マーカー設置 → ラベル更新 → 距離再計算）
+async function placePoint(which, latlng) {
+  const icon = makeDivIcon(which === 'start' ? '#B5673F' : '#5C7A63');
+
+  if (which === 'start') {
+    if (startMarker) map.removeLayer(startMarker);
+    startMarker = L.marker(latlng, { icon }).addTo(map);
+    startLatLng = latlng;
+    startPrefecture = null;
+    document.getElementById('startLabel').textContent = '検索中…';
+  } else {
+    if (endMarker) map.removeLayer(endMarker);
+    endMarker = L.marker(latlng, { icon }).addTo(map);
+    endLatLng = latlng;
+    endPrefecture = null;
+    document.getElementById('endLabel').textContent = '検索中…';
+  }
+
+  // ボタンの選択状態を解除（1回置いたらモードは自動で終了）
+  setPickMode(null);
+
+  // 地名・都道府県を逆引き取得（失敗しても緯度経度を表示するのでアプリは止まらない）
+  const { label, prefecture } = await reverseGeocode(latlng.lat, latlng.lng);
+  document.getElementById(which === 'start' ? 'startLabel' : 'endLabel').textContent = label;
+  if (which === 'start') startPrefecture = prefecture;
+  else endPrefecture = prefecture;
+
+  updateRouteAndDistance();
+  updateSuggestedPrice();
+}
+
+// 緯度経度 → 地名＋都道府県（Nominatim、無料・APIキー不要）
+// addressdetails=1 を付けて構造化データを取得し、都道府県名は display_name の文字列分割ではなく
+// address.state（または都道府県相当のフィールド）から確実に取り出す。
+async function reverseGeocode(lat, lon) {
+  try {
+    const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=16&addressdetails=1&accept-language=ja`);
+    const data = await res.json();
+    let label = `(${lat.toFixed(4)}, ${lon.toFixed(4)})`;
+    let prefecture = null;
+    if (data && data.display_name) {
+      // 長すぎるので先頭の2要素くらいに短縮
+      label = data.display_name.split(',').slice(0, 2).join(',').trim();
+    }
+    if (data && data.address) {
+      prefecture = data.address.state || data.address.province || null;
+    }
+    return { label, prefecture };
+  } catch (err) {
+    console.warn('逆ジオコーディング失敗', err);
+    return { label: `(${lat.toFixed(4)}, ${lon.toFixed(4)})`, prefecture: null };
+  }
+}
+
+// 地名検索（Nominatim） → 地図を移動。モード選択中ならそのままピンも置く
+document.getElementById('searchBtn').addEventListener('click', doSearch);
+document.getElementById('searchInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') doSearch();
+});
+
+async function doSearch() {
+  const q = document.getElementById('searchInput').value.trim();
+  if (!q) return;
+
+  try {
+    const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&countrycodes=jp&limit=1`);
+    const results = await res.json();
+    if (!results.length) {
+      alert('該当する場所が見つかりませんでした。別の表記で試してください。');
+      return;
+    }
+    const { lat, lon } = results[0];
+    const latlng = L.latLng(parseFloat(lat), parseFloat(lon));
+    map.setView(latlng, 14);
+
+    // 出発/到着のどちらかを選択中なら、検索結果の地点をそのままセット
+    if (pickMode === 'start' || pickMode === 'end') {
+      placePoint(pickMode, latlng);
+    }
+  } catch (err) {
+    alert('検索中にエラーが発生しました。通信環境を確認してください。');
+  }
+}
+
+// 2点が揃ったら直線を描画し、距離（km）を自動計算してフォームに反映
+function updateRouteAndDistance() {
+  if (routeLine) { map.removeLayer(routeLine); routeLine = null; }
+
+  if (startLatLng && endLatLng) {
+    routeLine = L.polyline([startLatLng, endLatLng], {
+      color: '#CC7A52',
+      weight: 3,
+      dashArray: '6 6',
+    }).addTo(map);
+    map.fitBounds(routeLine.getBounds(), { padding: [24, 24] });
+
+    const km = haversineKm(startLatLng.lat, startLatLng.lng, endLatLng.lat, endLatLng.lng);
+    document.getElementById('distance').value = km.toFixed(1);
+  }
+}
+
+// 2点間の直線距離（km）をHaversine公式で計算
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const R = 6371; // 地球の半径(km)
+  const toRad = (deg) => (deg * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+// =========================================================
+// 1.5 資源エネルギー庁の最新ガソリン価格を読み込む
+//   ※ブラウザから資源エネルギー庁のサイトを直接fetchすることはCORSの制約でできないため、
+//     scripts/fetch-gas-price.js（サーバー側で実行）が生成した price.json を読み込む方式にしている。
+//     まだ price.json を生成していない/取得に失敗した場合は、単価は手入力のまま使える。
+// =========================================================
+let latestPrices = null; // { regular, highoctane, diesel } … 全国平均（フォールバック用）
+let regionPrices = null; // { regular: {北海道, 東北, ...}, highoctane: {...}, diesel: {...} }
+let priceWeekOf = null;
+
+async function loadLatestGasPrice() {
+  const statusEl = document.getElementById('priceStatus');
+  try {
+    const res = await fetch('price.json', { cache: 'no-store' });
+    if (!res.ok) throw new Error('not found');
+    const data = await res.json();
+    latestPrices = data.prices;
+    regionPrices = data.regionPrices || null;
+    priceWeekOf = data.weekOf || null;
+
+    if (data.isExample) {
+      statusEl.textContent = `⚠ これはサンプル価格です（実データではありません）。scripts/fetch-gas-price.js を実行すると実際の最新価格に更新されます。`;
+    }
+    updateSuggestedPrice();
+  } catch (err) {
+    // price.json が無い／読み込めない場合はここに来る。アプリは止めず手入力に倒す。
+    statusEl.textContent = '最新価格を自動取得できませんでした。お手数ですが単価は手入力してください。';
+    console.warn('price.json の読み込みに失敗しました（scripts/fetch-gas-price.js を実行して生成してください）', err);
+  }
+}
+
+// 出発地点・到着地点の都道府県から地域（北海道〜沖縄の9区分）を求め、
+// 2地点の地域平均価格を単価欄に提案する。地域が分からない場合は全国平均にフォールバックする。
+// すでに単価欄に値が入っている場合は上書きしない（手入力を優先）。
+function updateSuggestedPrice() {
+  if (!latestPrices) return;
+  const statusEl = document.getElementById('priceStatus');
+  const priceInput = document.getElementById('price');
+  const fuelType = document.getElementById('fuelType').value;
+  const dateStr = priceWeekOf ? `（${priceWeekOf}調査）` : '';
+
+  const startRegion = prefectureToRegion(startPrefecture);
+  const endRegion = prefectureToRegion(endPrefecture);
+  const regions = [...new Set([startRegion, endRegion].filter(Boolean))];
+
+  let suggestedPrice = null;
+  let statusText;
+
+  if (regionPrices && regionPrices[fuelType] && regions.length > 0) {
+    const values = regions
+      .map((r) => regionPrices[fuelType][r])
+      .filter((v) => v !== undefined);
+    if (values.length > 0) {
+      suggestedPrice = values.reduce((a, b) => a + b, 0) / values.length;
+      statusText = `${regions.join('・')}地方の平均価格を反映しました${dateStr}。レシートを見て手入力で調整もできます。`;
+    }
+  }
+
+  if (suggestedPrice === null && latestPrices[fuelType] !== undefined) {
+    suggestedPrice = latestPrices[fuelType];
+    statusText = `全国平均価格を反映しました${dateStr}。出発地点・到着地点を選ぶと地域の平均価格に切り替わります。`;
+  }
+
+  if (suggestedPrice === null) return;
+
+  statusEl.textContent = statusText;
+  if (priceInput.value) return; // ユーザーが既に手入力している場合は値を上書きしない
+  priceInput.value = Math.round(suggestedPrice * 10) / 10;
+}
+
+document.getElementById('fuelType').addEventListener('change', () => {
+  document.getElementById('price').value = ''; // 油種を変えたら一度クリアして再提案
+  updateSuggestedPrice();
+});
+
+loadLatestGasPrice();
+
+// =========================================================
+// 2. ガソリン代の計算ロジック（前バージョンと同じ式）
+// =========================================================
+function calcGasCost({ distanceKm, fuelEfficiencyKmPerL, unitPricePerL, peopleCount }) {
+  if (distanceKm <= 0 || fuelEfficiencyKmPerL <= 0 || unitPricePerL <= 0 || peopleCount <= 0) {
+    throw new Error('距離・燃費・単価・人数はすべて0より大きい数値を入力してください。');
+  }
+  const usedFuelLiters = distanceKm / fuelEfficiencyKmPerL;
+  const totalCostYen = usedFuelLiters * unitPricePerL;
+  const perPersonYen = totalCostYen / peopleCount;
+  return { usedFuelLiters, totalCostYen, perPersonYen };
+}
+
+function fuelTypeLabel(value) {
+  switch (value) {
+    case 'regular': return 'レギュラー';
+    case 'highoctane': return 'ハイオク';
+    case 'diesel': return '軽油';
+    default: return value;
+  }
+}
+
+function formatYen(n) {
+  return Math.round(n).toLocaleString('ja-JP') + '円';
+}
+function formatKm(n) {
+  return n.toLocaleString('ja-JP', { maximumFractionDigits: 1 }) + 'km';
+}
+
+function buildLineText({ from, to, distanceKm, fuelType, usedFuelLiters, totalCostYen, perPersonYen, peopleCount }) {
+  const fromTo = (from && to) ? `${from} → ${to}\n` : '';
+  return (
+    `🚗 ガソリン代の精算\n` +
+    fromTo +
+    `距離：${formatKm(distanceKm)}\n` +
+    `油種：${fuelTypeLabel(fuelType)}\n` +
+    `推定使用量：${usedFuelLiters.toFixed(1)}L\n` +
+    `合計：${formatYen(totalCostYen)}\n` +
+    `人数：${peopleCount}人\n` +
+    `--------------------\n` +
+    `1人あたり：${formatYen(perPersonYen)}\n` +
+    `お願いします🙏`
+  );
+}
+
+document.getElementById('calcBtn').addEventListener('click', () => {
+  const from = document.getElementById('startLabel').textContent;
+  const to = document.getElementById('endLabel').textContent;
+  const distanceKm = Number(document.getElementById('distance').value);
+  const fuelType = document.getElementById('fuelType').value;
+  const fuelEfficiencyKmPerL = Number(document.getElementById('efficiency').value);
+  const unitPricePerL = Number(document.getElementById('price').value);
+  const peopleCount = Number(document.getElementById('people').value);
+
+  if (!startLatLng || !endLatLng) {
+    alert('先に地図上で出発地点と到着地点を選んでください。');
+    return;
+  }
+
+  let calcResult;
+  try {
+    calcResult = calcGasCost({ distanceKm, fuelEfficiencyKmPerL, unitPricePerL, peopleCount });
+  } catch (err) {
+    alert(err.message);
+    return;
+  }
+
+  document.getElementById('rDistance').textContent = formatKm(distanceKm);
+  document.getElementById('rTotal').textContent = formatYen(calcResult.totalCostYen);
+  document.getElementById('rPerPerson').textContent = formatYen(calcResult.perPersonYen);
+
+  const lineText = buildLineText({
+    from: (from === '未設定' ? '' : from),
+    to: (to === '未設定' ? '' : to),
+    distanceKm, fuelType,
+    usedFuelLiters: calcResult.usedFuelLiters,
+    totalCostYen: calcResult.totalCostYen,
+    perPersonYen: calcResult.perPersonYen,
+    peopleCount,
+  });
+  document.getElementById('lineText').value = lineText;
+
+  document.getElementById('result').classList.add('show');
+  document.getElementById('copyStatus').textContent = '';
+  document.getElementById('result').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+});
+
+document.getElementById('copyBtn').addEventListener('click', async () => {
+  const text = document.getElementById('lineText').value;
+  try {
+    await navigator.clipboard.writeText(text);
+    document.getElementById('copyStatus').textContent = 'コピーしました！';
+  } catch (err) {
+    const textarea = document.getElementById('lineText');
+    textarea.select();
+    document.execCommand('copy');
+    document.getElementById('copyStatus').textContent = 'コピーしました！';
+  }
+});
+</script>
+
+</body>
+</html>

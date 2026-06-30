@@ -1,0 +1,17 @@
+{
+  "name": "gas-price-fetcher",
+  "version": "0.1.0",
+  "private": true,
+  "description": "資源エネルギー庁の石油製品価格調査からガソリン価格を取得するスクリプト",
+  "main": "fetch-gas-price.js",
+  "scripts": {
+    "fetch": "node fetch-gas-price.js",
+    "fetch:debug": "node fetch-gas-price.js --debug"
+  },
+  "dependencies": {
+    "xlsx": "^0.18.5"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
