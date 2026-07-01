@@ -1,0 +1,74 @@
+<!-- @dsCard group="Buttons" -->
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>Button / Point select</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../tokens.css">
+<style>
+  .point-buttons {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .point-btn {
+    border: 1.5px solid var(--card-border);
+    background: #FBFAF6;
+    color: var(--text-primary);
+    border-radius: 10px;
+    padding: 10px 8px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-align: left;
+    width: 100%;
+  }
+  .point-btn .dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 6px;
+  }
+  .point-btn.start .dot { background: var(--start-color); }
+  .point-btn.end .dot { background: var(--end-color); }
+  .point-btn.active { border-color: var(--accent); background: var(--accent-soft); }
+  .point-btn .label-name {
+    display: block;
+    font-size: 11px;
+    font-weight: 400;
+    color: var(--text-secondary);
+    margin-top: 3px;
+  }
+</style>
+</head>
+<body>
+<div class="ds-preview">
+  <h3>Unset / active</h3>
+  <div class="point-buttons">
+    <button type="button" class="point-btn start active">
+      <span><span class="dot"></span>出発地点</span>
+      <span class="label-name">未設定</span>
+    </button>
+    <button type="button" class="point-btn end">
+      <span><span class="dot"></span>到着地点</span>
+      <span class="label-name">未設定</span>
+    </button>
+  </div>
+  <h3 style="margin-top:24px;">Set</h3>
+  <div class="point-buttons">
+    <button type="button" class="point-btn start">
+      <span><span class="dot"></span>出発地点</span>
+      <span class="label-name">東京駅</span>
+    </button>
+    <button type="button" class="point-btn end">
+      <span><span class="dot"></span>到着地点</span>
+      <span class="label-name">富士急ハイランド</span>
+    </button>
+  </div>
+</div>
+</body>
+</html>

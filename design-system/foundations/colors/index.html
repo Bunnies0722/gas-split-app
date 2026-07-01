@@ -1,0 +1,56 @@
+<!-- @dsCard group="Foundations" -->
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>Colors</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../tokens.css">
+<style>
+  .swatches {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 14px;
+  }
+  .swatch {
+    border: 1px solid var(--card-border);
+    border-radius: 14px;
+    overflow: hidden;
+    background: var(--card-bg);
+  }
+  .swatch .fill {
+    height: 64px;
+  }
+  .swatch .meta {
+    padding: 8px 10px;
+    font-size: 11.5px;
+  }
+  .swatch .name {
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+  .swatch .value {
+    color: var(--text-secondary);
+    font-family: ui-monospace, monospace;
+  }
+</style>
+</head>
+<body>
+<div class="ds-preview">
+  <h3>Kraft / Crail Palette</h3>
+  <div class="swatches">
+    <div class="swatch"><div class="fill" style="background:#F0EEE6;"></div><div class="meta"><div class="name">bg</div><div class="value">#F0EEE6</div></div></div>
+    <div class="swatch"><div class="fill" style="background:#FDFCF8;"></div><div class="meta"><div class="name">card-bg</div><div class="value">#FDFCF8</div></div></div>
+    <div class="swatch"><div class="fill" style="background:#E4E0D3;"></div><div class="meta"><div class="name">card-border</div><div class="value">#E4E0D3</div></div></div>
+    <div class="swatch"><div class="fill" style="background:#3D3929;"></div><div class="meta"><div class="name">text-primary</div><div class="value">#3D3929</div></div></div>
+    <div class="swatch"><div class="fill" style="background:#83827D;"></div><div class="meta"><div class="name">text-secondary</div><div class="value">#83827D</div></div></div>
+    <div class="swatch"><div class="fill" style="background:#CC785C;"></div><div class="meta"><div class="name">accent</div><div class="value">#CC785C</div></div></div>
+    <div class="swatch"><div class="fill" style="background:#B35F42;"></div><div class="meta"><div class="name">accent-hover</div><div class="value">#B35F42</div></div></div>
+    <div class="swatch"><div class="fill" style="background:#F2E4DA;"></div><div class="meta"><div class="name">accent-soft</div><div class="value">#F2E4DA</div></div></div>
+    <div class="swatch"><div class="fill" style="background:#B5673F;"></div><div class="meta"><div class="name">start-color</div><div class="value">#B5673F</div></div></div>
+    <div class="swatch"><div class="fill" style="background:#5C7A63;"></div><div class="meta"><div class="name">end-color / success</div><div class="value">#5C7A63</div></div></div>
+  </div>
+</div>
+</body>
+</html>

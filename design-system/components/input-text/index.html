@@ -1,0 +1,21 @@
+<!-- @dsCard group="Forms" -->
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>Input / Text</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../tokens.css">
+</head>
+<body>
+<div class="ds-preview">
+  <label for="a">単価（円/L）</label>
+  <input id="a" type="number" min="0" step="0.1" placeholder="例：170">
+  <p class="note">資源エネルギー庁の最新データを確認中…</p>
+
+  <label for="b" style="margin-top:20px;">フォーカス状態の例</label>
+  <input id="b" type="text" value="富士急ハイランド" style="border-color: var(--accent); background:#fff; box-shadow: var(--focus-ring);">
+</div>
+</body>
+</html>

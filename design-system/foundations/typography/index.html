@@ -1,0 +1,60 @@
+<!-- @dsCard group="Foundations" -->
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>Typography</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../tokens.css">
+<style>
+  .type-row { margin-bottom: 20px; }
+  .type-row .label {
+    font-size: 11px;
+    color: var(--text-secondary);
+    font-family: ui-monospace, monospace;
+    margin-bottom: 4px;
+  }
+  .h1-sample {
+    font-family: "Source Serif 4", serif;
+    font-weight: 600;
+    font-size: 25px;
+    letter-spacing: -0.015em;
+    margin: 0;
+  }
+  .h2-sample {
+    font-family: "Source Serif 4", serif;
+    font-weight: 600;
+    font-size: 15.5px;
+    margin: 0;
+  }
+  .body-sample { font-size: 14px; margin: 0; }
+  .secondary-sample { font-size: 13px; color: var(--text-secondary); margin: 0; }
+  .note-sample { font-size: 11px; color: var(--text-secondary); margin: 0; }
+</style>
+</head>
+<body>
+<div class="ds-preview">
+  <div class="type-row">
+    <div class="label">Source Serif 4 / 600 / 25px — header h1</div>
+    <p class="h1-sample">ガソリン代 自動割り勘</p>
+  </div>
+  <div class="type-row">
+    <div class="label">Source Serif 4 / 600 / 15.5px — card h2</div>
+    <p class="h2-sample">📍 ルートを選ぶ</p>
+  </div>
+  <div class="type-row">
+    <div class="label">Inter / 400 / 14px — body</div>
+    <p class="body-sample">走行距離や単価などフォーム入力の標準サイズです。</p>
+  </div>
+  <div class="type-row">
+    <div class="label">Inter / 400 / 13px — secondary</div>
+    <p class="secondary-sample">地図で出発地点・到着地点を選んでサクッと精算</p>
+  </div>
+  <div class="type-row">
+    <div class="label">Inter / 400 / 11px — note</div>
+    <p class="note-sample">※現在地の取得には位置情報の利用許可が必要です。</p>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,24 @@
+<!-- @dsCard group="Forms" -->
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>Search Row</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../tokens.css">
+<style>
+  .search-row { display: flex; gap: 6px; }
+  .search-row input { flex: 1; }
+  .search-row button { flex-shrink: 0; width: auto; padding: 0 14px; background: var(--text-primary); }
+</style>
+</head>
+<body>
+<div class="ds-preview">
+  <div class="search-row">
+    <input id="searchInput" type="text" placeholder="地名・施設名で検索（例：富士急ハイランド）">
+    <button id="searchBtn" type="button">検索</button>
+  </div>
+</div>
+</body>
+</html>

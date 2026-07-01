@@ -1,0 +1,40 @@
+<!-- @dsCard group="Buttons" -->
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>Button / Geo (pill)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../tokens.css">
+<style>
+  .geo-btn {
+    border: 1.5px solid var(--card-border);
+    background: #FBFAF6;
+    color: var(--text-secondary);
+    border-radius: 8px;
+    padding: 7px 8px;
+    font-size: 11.5px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    width: auto;
+  }
+  .geo-btn:hover {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    color: var(--accent-hover);
+  }
+  .geo-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+</style>
+</head>
+<body>
+<div class="ds-preview">
+  <h3>Default / disabled</h3>
+  <div class="ds-row">
+    <button type="button" class="geo-btn">📍 現在地にする</button>
+    <button type="button" class="geo-btn" disabled>取得中…</button>
+  </div>
+</div>
+</body>
+</html>

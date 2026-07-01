@@ -1,0 +1,33 @@
+<!-- @dsCard group="Forms" -->
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>Distance Row</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../tokens.css">
+<style>
+  .distance-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-top: 12px;
+    border-top: 1px solid var(--card-border);
+  }
+  .distance-row label { font-size: 12.5px; color: var(--text-secondary); margin: 0; }
+  .distance-row input { width: 90px; text-align: right; font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="ds-preview">
+  <div class="card">
+    <div class="distance-row">
+      <label for="distance">走行距離（km）</label>
+      <input id="distance" type="number" min="0" step="0.1" value="112.4">
+    </div>
+    <p class="note">※出発地点・到着地点から実際の道路距離を自動計算した値です。</p>
+  </div>
+</div>
+</body>
+</html>
