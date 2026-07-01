@@ -12,6 +12,7 @@
 <!-- 見出し用フォント（Claudeの雰囲気に寄せたセリフ体） -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/tabler-icons.min.css">
 
 <style>
   /* ===== Claude風カラーパレット（Kraft/Crailベース） ===== */
@@ -53,7 +54,8 @@
   }
 
   header .icon {
-    font-size: 30px;
+    font-size: 26px;
+    color: var(--accent);
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -94,7 +96,23 @@
     margin: 0 0 16px;
     display: flex;
     align-items: center;
-    gap: 7px;
+    gap: 10px;
+  }
+
+  .card-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    background: var(--accent-soft);
+    flex-shrink: 0;
+  }
+
+  .card-icon i {
+    font-size: 15px;
+    color: var(--accent);
   }
 
   /* ----- 地図カード ----- */
@@ -152,6 +170,10 @@
     font-weight: 600;
     cursor: pointer;
     transition: all 0.15s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
   }
 
   .geo-btn:hover {
@@ -288,6 +310,10 @@
     border-radius: 12px;
     cursor: pointer;
     transition: background 0.15s ease, transform 0.1s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
   }
 
   button:hover { background: var(--accent-hover); }
@@ -360,14 +386,14 @@
 <div class="container">
 
   <header>
-    <div class="icon">⛽</div>
+    <div class="icon"><i class="ti ti-flame" aria-hidden="true"></i></div>
     <h1>ガソリン代 自動割り勘</h1>
     <p>地図で出発地点・到着地点を選んでサクッと精算</p>
   </header>
 
   <!-- ===== 地図カード ===== -->
   <div class="card">
-    <h2>📍 ルートを選ぶ</h2>
+    <h2><span class="card-icon"><i class="ti ti-map-2" aria-hidden="true"></i></span>ルートを選ぶ</h2>
 
     <div class="search-row">
       <input id="searchInput" type="text" placeholder="地名・施設名で検索（例：富士急ハイランド）">
@@ -384,14 +410,14 @@
           <span><span class="dot"></span>出発地点</span>
           <span class="label-name" id="startLabel">未設定</span>
         </button>
-        <button class="geo-btn" id="startGeoBtn" type="button">📍 現在地にする</button>
+        <button class="geo-btn" id="startGeoBtn" type="button"><i class="ti ti-current-location" aria-hidden="true"></i> 現在地にする</button>
       </div>
       <div class="point-group">
         <button class="point-btn end" id="setEndBtn" type="button">
           <span><span class="dot"></span>到着地点</span>
           <span class="label-name" id="endLabel">未設定</span>
         </button>
-        <button class="geo-btn" id="endGeoBtn" type="button">📍 現在地にする</button>
+        <button class="geo-btn" id="endGeoBtn" type="button"><i class="ti ti-current-location" aria-hidden="true"></i> 現在地にする</button>
       </div>
     </div>
     <p class="note">※現在地の取得には位置情報の利用許可が必要です。ブラウザの仕様上、HTTPS接続（またはlocalhost）でないと動作しない場合があります。</p>
@@ -405,7 +431,7 @@
 
   <!-- ===== グループカード ===== -->
   <div class="card" id="groupCard">
-    <h2>👥 グループ</h2>
+    <h2><span class="card-icon"><i class="ti ti-users" aria-hidden="true"></i></span>グループ</h2>
 
     <div id="groupNotLoaded">
       <p class="note">グループを作っておくと、メンバー名や精算履歴をいつでも呼び出せます。作らなくても通常通り使えます。</p>
@@ -424,20 +450,20 @@
       <p class="note">このURLを友達に共有すると、同じグループ・履歴を見られます：</p>
       <div class="search-row">
         <input id="groupShareUrl" type="text" readonly>
-        <button id="copyGroupUrlBtn" type="button">📋</button>
+        <button id="copyGroupUrlBtn" type="button"><i class="ti ti-clipboard" aria-hidden="true"></i></button>
       </div>
     </div>
   </div>
 
   <!-- ===== 履歴カード ===== -->
   <div class="card" id="historyCard" style="display:none;">
-    <h2>📖 履歴</h2>
+    <h2><span class="card-icon"><i class="ti ti-history" aria-hidden="true"></i></span>履歴</h2>
     <div id="historyList"></div>
   </div>
 
   <!-- ===== 計算条件カード ===== -->
   <div class="card">
-    <h2>🚗 車・人数の情報</h2>
+    <h2><span class="card-icon"><i class="ti ti-car" aria-hidden="true"></i></span>車・人数の情報</h2>
 
     <label for="fuelType">油種</label>
     <select id="fuelType">
@@ -462,7 +488,7 @@
 
   <!-- ===== 結果カード ===== -->
   <div class="card result-card" id="result">
-    <h2>💰 精算結果</h2>
+    <h2><span class="card-icon"><i class="ti ti-receipt" aria-hidden="true"></i></span>精算結果</h2>
 
     <div class="result-row"><span>総走行距離</span><span class="value" id="rDistance">-</span></div>
     <div class="result-row"><span>合計ガソリン代</span><span class="value" id="rTotal">-</span></div>
@@ -470,9 +496,9 @@
 
     <label for="lineText">精算用テキスト（LINEなどに貼れます）</label>
     <textarea id="lineText" readonly></textarea>
-    <button id="copyBtn" type="button">📋 精算用テキストをコピー</button>
+    <button id="copyBtn" type="button"><i class="ti ti-clipboard" aria-hidden="true"></i> 精算用テキストをコピー</button>
     <div id="copyStatus"></div>
-    <button id="saveHistoryBtn" type="button" style="display:none; margin-top:10px; background: var(--success);">📖 この精算をグループの履歴に保存</button>
+    <button id="saveHistoryBtn" type="button" style="display:none; margin-top:10px; background: var(--success);"><i class="ti ti-bookmark" aria-hidden="true"></i> この精算をグループの履歴に保存</button>
   </div>
 
   <p class="attr">地図データ &copy; OpenStreetMap contributors</p>
@@ -1082,7 +1108,7 @@ document.getElementById('saveHistoryBtn').addEventListener('click', async () => 
     console.error(err);
   } finally {
     btn.disabled = false;
-    btn.textContent = '📖 この精算をグループの履歴に保存';
+    btn.innerHTML = '<i class="ti ti-bookmark" aria-hidden="true"></i> この精算をグループの履歴に保存';
   }
 });
 
