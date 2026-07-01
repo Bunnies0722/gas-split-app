@@ -14,20 +14,21 @@
 <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
 <style>
-  /* ===== Claude風カラーパレット ===== */
+  /* ===== Claude風カラーパレット（Kraft/Crailベース） ===== */
   :root {
-    --bg: #F7F4EC;
-    --card-bg: #FFFFFF;
-    --card-border: #E9E3D6;
-    --text-primary: #2B2622;
-    --text-secondary: #786F60;
-    --accent: #CC7A52;
-    --accent-hover: #B5673F;
-    --accent-soft: #F1E2D6;
+    --bg: #F0EEE6;
+    --card-bg: #FDFCF8;
+    --card-border: #E4E0D3;
+    --text-primary: #3D3929;
+    --text-secondary: #83827D;
+    --accent: #CC785C;
+    --accent-hover: #B35F42;
+    --accent-soft: #F2E4DA;
     --start-color: #B5673F;
     --end-color: #5C7A63;
     --success: #5C7A63;
-    --shadow: 0 1px 2px rgba(43, 38, 34, 0.04), 0 4px 16px rgba(43, 38, 34, 0.06);
+    --shadow: 0 1px 2px rgba(61, 57, 41, 0.04), 0 6px 20px rgba(61, 57, 41, 0.07);
+    --focus-ring: 0 0 0 3px rgba(204, 120, 92, 0.18);
   }
 
   * { box-sizing: border-box; }
@@ -38,6 +39,7 @@
     color: var(--text-primary);
     margin: 0;
     padding: 32px 16px 64px;
+    -webkit-font-smoothing: antialiased;
   }
 
   .container {
@@ -47,19 +49,26 @@
 
   header {
     text-align: center;
-    margin-bottom: 28px;
+    margin-bottom: 32px;
   }
 
   header .icon {
-    font-size: 32px;
+    font-size: 30px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 52px;
+    height: 52px;
+    border-radius: 16px;
+    background: var(--accent-soft);
   }
 
   header h1 {
     font-family: "Source Serif 4", serif;
     font-weight: 600;
-    font-size: 24px;
-    margin: 8px 0 4px;
-    letter-spacing: -0.01em;
+    font-size: 25px;
+    margin: 14px 0 6px;
+    letter-spacing: -0.015em;
   }
 
   header p {
@@ -71,20 +80,21 @@
   .card {
     background: var(--card-bg);
     border: 1px solid var(--card-border);
-    border-radius: 16px;
-    padding: 20px;
+    border-radius: 20px;
+    padding: 22px;
     margin-bottom: 16px;
     box-shadow: var(--shadow);
   }
 
   .card h2 {
-    font-size: 14px;
+    font-family: "Source Serif 4", serif;
+    font-size: 15.5px;
     font-weight: 600;
     color: var(--text-primary);
-    margin: 0 0 14px;
+    margin: 0 0 16px;
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 7px;
   }
 
   /* ----- 地図カード ----- */
@@ -94,6 +104,12 @@
     border-radius: 12px;
     margin-bottom: 12px;
     border: 1px solid var(--card-border);
+  }
+
+  @media (min-width: 768px) {
+    #map {
+      height: 440px;
+    }
   }
 
   .search-row {
@@ -236,14 +252,16 @@
     color: var(--text-primary);
     box-sizing: border-box;
     border: 1.5px solid var(--card-border);
-    border-radius: 8px;
+    border-radius: 10px;
     background: #FBFAF6;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
   }
 
   input:focus, select:focus {
     outline: none;
     border-color: var(--accent);
     background: #fff;
+    box-shadow: var(--focus-ring);
   }
 
   .note {
@@ -267,13 +285,14 @@
     background: var(--accent);
     color: #fff;
     border: none;
-    border-radius: 10px;
+    border-radius: 12px;
     cursor: pointer;
-    transition: background 0.15s ease;
+    transition: background 0.15s ease, transform 0.1s ease;
   }
 
   button:hover { background: var(--accent-hover); }
   button:active { transform: scale(0.99); }
+  button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 
   #calcBtn { margin-top: 18px; }
 
@@ -393,14 +412,14 @@
       <label for="groupNameInput">グループ名（任意）</label>
       <input id="groupNameInput" type="text" placeholder="例：箱根ドライブ">
       <label for="memberInput">メンバー（改行で1人ずつ入力）</label>
-      <textarea id="memberInput" rows="3" placeholder="ゆうき&#10;たろう&#10;はなこ" style="width:100%;font-family:inherit;font-size:14px;padding:9px 10px;border:1.5px solid var(--card-border);border-radius:8px;background:#FBFAF6;"></textarea>
+      <textarea id="memberInput" rows="3" placeholder="ゆうき&#10;たろう&#10;はなこ" style="width:100%;font-family:inherit;font-size:14px;padding:9px 10px;border:1.5px solid var(--card-border);border-radius:10px;background:#FBFAF6;"></textarea>
       <button id="createGroupBtn" type="button" style="margin-top:12px;">グループを作成</button>
     </div>
 
     <div id="groupLoaded" style="display:none;">
       <p class="note">グループ名：<strong id="groupNameDisplay">-</strong></p>
       <label for="memberEditInput">メンバー（改行で1人ずつ入力）</label>
-      <textarea id="memberEditInput" rows="3" style="width:100%;font-family:inherit;font-size:14px;padding:9px 10px;border:1.5px solid var(--card-border);border-radius:8px;background:#FBFAF6;"></textarea>
+      <textarea id="memberEditInput" rows="3" style="width:100%;font-family:inherit;font-size:14px;padding:9px 10px;border:1.5px solid var(--card-border);border-radius:10px;background:#FBFAF6;"></textarea>
       <button id="saveMembersBtn" type="button" style="margin-top:8px;">メンバーを保存</button>
       <p class="note">このURLを友達に共有すると、同じグループ・履歴を見られます：</p>
       <div class="search-row">
@@ -675,14 +694,14 @@ async function updateRouteAndDistance() {
     if (data.error || !data.geometry || !data.geometry.length) throw new Error(data.error || 'ルート取得失敗');
 
     routeLine = L.polyline(data.geometry, {
-      color: '#CC7A52',
+      color: '#CC785C',
       weight: 4,
     }).addTo(map);
     document.getElementById('distance').value = data.distanceKm.toFixed(1);
   } catch (err) {
     console.warn('道路ルートの取得に失敗したため、直線距離で代用します:', err);
     routeLine = L.polyline([startLatLng, endLatLng], {
-      color: '#CC7A52',
+      color: '#CC785C',
       weight: 3,
       dashArray: '6 6',
     }).addTo(map);
