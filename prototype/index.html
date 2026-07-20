@@ -882,6 +882,7 @@ async function updateRouteAndDistance() {
     routeLine = L.polyline([startLatLng, endLatLng], { color: '#FB923C', weight: 2, dashArray: '6 6', opacity: 0.7 }).addTo(map);
     const km = haversineKm(startLatLng.lat, startLatLng.lng, endLatLng.lat, endLatLng.lng);
     document.getElementById('distance').value = km.toFixed(1);
+    warningEl.innerHTML = `<i class="ti ti-alert-triangle" aria-hidden="true"></i> 道路ルートの取得に失敗しました（直線距離で代用中）。詳細: ${err.message}`;
     warningEl.style.display = 'flex';
   }
 
