@@ -5,31 +5,32 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ガソリン代 自動割り勘</title>
 
-<!-- 地図表示用ライブラリ Leaflet（無料・APIキー不要） -->
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
-
-<!-- 見出し用フォント（Claudeの雰囲気に寄せたセリフ体） -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/tabler-icons.min.css">
 
 <style>
-  /* ===== Claude風カラーパレット（Kraft/Crailベース） ===== */
   :root {
-    --bg: #F0EEE6;
-    --card-bg: #FDFCF8;
-    --card-border: #E4E0D3;
-    --text-primary: #3D3929;
-    --text-secondary: #83827D;
-    --accent: #CC785C;
-    --accent-hover: #B35F42;
-    --accent-soft: #F2E4DA;
-    --start-color: #B5673F;
-    --end-color: #5C7A63;
-    --success: #5C7A63;
-    --shadow: 0 1px 2px rgba(61, 57, 41, 0.04), 0 6px 20px rgba(61, 57, 41, 0.07);
-    --focus-ring: 0 0 0 3px rgba(204, 120, 92, 0.18);
+    --bg: #0A0D14;
+    --card-bg: #111520;
+    --card-border: rgba(255,255,255,0.06);
+    --card-border-accent: rgba(34,211,238,0.18);
+    --text-primary: #E2E8F0;
+    --text-secondary: #94A3B8;
+    --text-muted: #475569;
+    --accent: #22D3EE;
+    --accent-hover: #06B6D4;
+    --accent-soft: rgba(34,211,238,0.08);
+    --accent-border: rgba(34,211,238,0.22);
+    --start-color: #F97316;
+    --end-color: #22D3EE;
+    --success: #10B981;
+    --success-bg: rgba(16,185,129,0.10);
+    --success-border: rgba(16,185,129,0.25);
+    --focus-ring: 0 0 0 2px rgba(34,211,238,0.3);
+    --font-mono: "JetBrains Mono", "Courier New", monospace;
   }
 
   * { box-sizing: border-box; }
@@ -39,200 +40,227 @@
     background: var(--bg);
     color: var(--text-primary);
     margin: 0;
-    padding: 32px 16px 64px;
+    padding: 24px 16px 72px;
     -webkit-font-smoothing: antialiased;
   }
 
-  .container {
-    max-width: 480px;
-    margin: 0 auto;
-  }
+  .container { max-width: 480px; margin: 0 auto; }
 
-  header {
-    text-align: center;
-    margin-bottom: 32px;
-  }
+  /* ===== Header ===== */
+  header { text-align: center; margin-bottom: 24px; }
 
   header .icon {
-    font-size: 26px;
-    color: var(--accent);
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 52px;
-    height: 52px;
-    border-radius: 16px;
+    width: 48px;
+    height: 48px;
+    border-radius: 14px;
     background: var(--accent-soft);
+    border: 1px solid var(--accent-border);
+    color: var(--accent);
+    font-size: 22px;
+    margin-bottom: 12px;
   }
 
   header h1 {
-    font-family: "Source Serif 4", serif;
-    font-weight: 600;
-    font-size: 25px;
-    margin: 14px 0 6px;
-    letter-spacing: -0.015em;
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: -0.025em;
+    color: var(--text-primary);
+    margin: 0 0 4px;
   }
 
-  header p {
-    font-size: 13px;
-    color: var(--text-secondary);
-    margin: 0;
+  header p { font-size: 12px; color: var(--text-muted); margin: 0; }
+
+  /* ===== Step indicator ===== */
+  .steps {
+    display: flex;
+    align-items: center;
+    margin-bottom: 20px;
   }
 
+  .step-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+    position: relative;
+  }
+
+  .step-item:not(:last-child)::after {
+    content: "";
+    position: absolute;
+    top: 14px;
+    left: 55%;
+    width: 90%;
+    height: 1px;
+    background: rgba(255,255,255,0.06);
+    z-index: 0;
+  }
+
+  .step-item.step-done:not(:last-child)::after { background: var(--accent); opacity: 0.5; }
+
+  .step-circle {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    border: 1px solid rgba(255,255,255,0.08);
+    background: var(--card-bg);
+    color: var(--text-muted);
+    position: relative;
+    z-index: 1;
+    transition: all 0.2s ease;
+  }
+
+  .step-item.step-active .step-circle {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #0A0D14;
+  }
+
+  .step-item.step-done .step-circle {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .step-label { font-size: 10px; color: var(--text-muted); letter-spacing: 0.03em; }
+  .step-item.step-active .step-label { color: var(--accent); }
+
+  /* ===== Step panels ===== */
+  .step-panel { display: none; }
+  .step-panel.active { display: block; }
+
+  /* ===== Cards ===== */
   .card {
     background: var(--card-bg);
     border: 1px solid var(--card-border);
-    border-radius: 20px;
-    padding: 22px;
-    margin-bottom: 16px;
-    box-shadow: var(--shadow);
+    border-radius: 14px;
+    padding: 18px;
+    margin-bottom: 12px;
   }
 
+  .card.accent { border-color: var(--card-border-accent); }
+
   .card h2 {
-    font-family: "Source Serif 4", serif;
-    font-size: 15.5px;
-    font-weight: 600;
-    color: var(--text-primary);
-    margin: 0 0 16px;
     display: flex;
     align-items: center;
     gap: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    margin: 0 0 14px;
   }
 
   .card-icon {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 28px;
-    height: 28px;
-    border-radius: 8px;
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
     background: var(--accent-soft);
     flex-shrink: 0;
   }
 
-  .card-icon i {
-    font-size: 15px;
-    color: var(--accent);
-  }
+  .card-icon i { font-size: 12px; color: var(--accent); }
 
-  /* ----- 地図カード ----- */
+  /* ===== Map ===== */
   #map {
     width: 100%;
-    height: 260px;
-    border-radius: 12px;
-    margin-bottom: 12px;
-    border: 1px solid var(--card-border);
+    height: 220px;
+    border-radius: 10px;
+    margin-bottom: 10px;
+    border: 1px solid rgba(255,255,255,0.05);
   }
 
-  @media (min-width: 768px) {
-    #map {
-      height: 440px;
-    }
-  }
+  @media (min-width: 768px) { #map { height: 360px; } }
 
-  .search-row {
-    display: flex;
-    gap: 6px;
-    margin-bottom: 12px;
-  }
-
-  .search-row input {
-    flex: 1;
-  }
-
+  .search-row { display: flex; gap: 6px; margin-bottom: 10px; }
+  .search-row input { flex: 1; }
   .search-row button {
     flex-shrink: 0;
     width: auto;
     padding: 0 14px;
-    background: var(--text-primary);
+    background: rgba(255,255,255,0.05);
+    color: var(--text-secondary);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 8px;
+    font-size: 14px;
   }
+  .search-row button:hover { background: rgba(255,255,255,0.09); }
 
-  .point-buttons {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 8px;
-    margin-bottom: 12px;
-  }
-
-  .point-group {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
+  .point-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+  .point-group { display: flex; flex-direction: column; gap: 6px; }
 
   .geo-btn {
-    border: 1.5px solid var(--card-border);
-    background: #FBFAF6;
-    color: var(--text-secondary);
+    border: 1px solid rgba(255,255,255,0.07);
+    background: rgba(255,255,255,0.03);
+    color: var(--text-muted);
     border-radius: 8px;
     padding: 7px 8px;
-    font-size: 11.5px;
+    font-size: 11px;
     font-weight: 600;
     cursor: pointer;
     transition: all 0.15s ease;
+    font-family: inherit;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 5px;
+    gap: 4px;
   }
 
-  .geo-btn:hover {
-    border-color: var(--accent);
-    background: var(--accent-soft);
-    color: var(--accent-hover);
-  }
-
-  .geo-btn:disabled {
-    opacity: 0.55;
-    cursor: not-allowed;
-  }
+  .geo-btn:hover { border-color: var(--accent-border); background: var(--accent-soft); color: var(--accent); }
+  .geo-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
   .point-btn {
-    border: 1.5px solid var(--card-border);
-    background: #FBFAF6;
+    border: 1px solid rgba(255,255,255,0.07);
+    background: rgba(255,255,255,0.03);
     color: var(--text-primary);
     border-radius: 10px;
-    padding: 10px 8px;
-    font-size: 13px;
+    padding: 10px;
+    font-size: 12.5px;
     font-weight: 600;
     cursor: pointer;
     transition: all 0.15s ease;
     text-align: left;
+    font-family: inherit;
+    width: 100%;
   }
 
   .point-btn .dot {
     display: inline-block;
-    width: 8px;
-    height: 8px;
+    width: 7px;
+    height: 7px;
     border-radius: 50%;
-    margin-right: 6px;
+    margin-right: 5px;
   }
 
   .point-btn.start .dot { background: var(--start-color); }
   .point-btn.end .dot { background: var(--end-color); }
-
-  .point-btn.active {
-    border-color: var(--accent);
-    background: var(--accent-soft);
-  }
+  .point-btn.active { border-color: var(--accent-border); background: var(--accent-soft); }
 
   .point-btn .label-name {
     display: block;
     font-size: 11px;
     font-weight: 400;
-    color: var(--text-secondary);
+    color: var(--text-muted);
     margin-top: 3px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
 
-  .map-hint {
-    font-size: 11.5px;
-    color: var(--text-secondary);
-    line-height: 1.5;
-    margin: 0 0 4px;
-  }
+  .map-hint { font-size: 11px; color: var(--text-muted); line-height: 1.5; margin: 0 0 8px; }
 
   .distance-row {
     display: flex;
@@ -240,74 +268,86 @@
     justify-content: space-between;
     margin-top: 10px;
     padding-top: 12px;
-    border-top: 1px solid var(--card-border);
+    border-top: 1px solid rgba(255,255,255,0.05);
   }
 
   .distance-row label {
-    font-size: 12.5px;
-    color: var(--text-secondary);
+    font-size: 11px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
     margin: 0;
   }
 
   .distance-row input {
-    width: 90px;
+    width: 110px;
     text-align: right;
-    font-weight: 600;
+    font-weight: 700;
+    font-family: var(--font-mono);
+    font-size: 16px;
+    color: var(--accent);
+    border-color: transparent;
+    background: transparent;
+    padding: 4px 0;
   }
 
-  /* ----- フォーム共通 ----- */
+  .distance-row input:focus {
+    border-color: var(--accent);
+    background: rgba(255,255,255,0.03);
+    border-radius: 6px;
+    padding: 4px 8px;
+  }
+
+  /* ===== Forms ===== */
   label {
     display: block;
-    font-size: 12.5px;
-    color: var(--text-secondary);
+    font-size: 11px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
     margin-top: 12px;
-    margin-bottom: 4px;
+    margin-bottom: 5px;
   }
 
   label:first-of-type { margin-top: 0; }
 
-  input, select {
+  input, select, textarea {
     width: 100%;
-    padding: 9px 10px;
-    font-size: 14px;
+    padding: 9px 11px;
+    font-size: 13.5px;
     font-family: inherit;
     color: var(--text-primary);
     box-sizing: border-box;
-    border: 1.5px solid var(--card-border);
-    border-radius: 10px;
-    background: #FBFAF6;
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 8px;
+    background: rgba(255,255,255,0.03);
     transition: border-color 0.15s ease, box-shadow 0.15s ease;
   }
 
-  input:focus, select:focus {
+  input:focus, select:focus, textarea:focus {
     outline: none;
     border-color: var(--accent);
-    background: #fff;
     box-shadow: var(--focus-ring);
+    background: rgba(255,255,255,0.05);
   }
 
-  .note {
-    font-size: 11px;
-    color: var(--text-secondary);
-    margin-top: 4px;
-  }
+  select option { background: #1a1f2e; color: var(--text-primary); }
 
-  .row2 {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
-  }
+  .note { font-size: 11px; color: var(--text-muted); margin-top: 4px; line-height: 1.5; }
 
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+  /* ===== Buttons ===== */
   button {
     width: 100%;
-    padding: 12px;
-    font-size: 14.5px;
-    font-weight: 600;
+    padding: 11px 14px;
+    font-size: 14px;
+    font-weight: 700;
     font-family: inherit;
     background: var(--accent);
-    color: #fff;
+    color: #0A0D14;
     border: none;
-    border-radius: 12px;
+    border-radius: 10px;
     cursor: pointer;
     transition: background 0.15s ease, transform 0.1s ease;
     display: flex;
@@ -320,65 +360,69 @@
   button:active { transform: scale(0.99); }
   button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 
-  #calcBtn { margin-top: 18px; }
+  .btn-secondary {
+    background: rgba(255,255,255,0.05);
+    color: var(--text-secondary);
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+  .btn-secondary:hover { background: rgba(255,255,255,0.09); color: var(--text-primary); }
 
-  /* ----- 結果カード ----- */
-  .result-card { display: none; }
-  .result-card.show { display: block; }
+  .btn-ghost {
+    background: rgba(255,255,255,0.04);
+    color: var(--text-muted);
+    border: 1px solid rgba(255,255,255,0.07);
+    font-weight: 600;
+    font-size: 13px;
+  }
+  .btn-ghost:hover { background: rgba(255,255,255,0.08); color: var(--text-secondary); }
 
+  .btn-success {
+    background: var(--success-bg);
+    color: var(--success);
+    border: 1px solid var(--success-border);
+  }
+  .btn-success:hover { background: rgba(16,185,129,0.16); }
+
+  /* ===== Nav row ===== */
+  .nav-row { display: flex; gap: 8px; margin-top: 4px; margin-bottom: 8px; }
+
+  /* ===== Results ===== */
   .result-row {
     display: flex;
     justify-content: space-between;
     align-items: baseline;
-    font-size: 13.5px;
-    color: var(--text-secondary);
     padding: 9px 0;
-    border-bottom: 1px solid var(--card-border);
+    border-bottom: 1px solid rgba(255,255,255,0.04);
   }
   .result-row:last-of-type { border-bottom: none; }
 
-  .result-row .value {
-    font-weight: 700;
-    color: var(--text-primary);
-    font-size: 15px;
-  }
+  .result-label { font-size: 12px; color: var(--text-muted); }
+  .result-value { font-family: var(--font-mono); font-size: 14px; font-weight: 700; color: var(--text-secondary); }
 
-  .result-row.highlight .value {
-    color: var(--accent);
-    font-size: 20px;
-  }
+  .result-row.highlight .result-label { font-size: 13px; color: var(--text-secondary); }
+  .result-row.highlight .result-value { font-size: 26px; color: var(--accent); }
 
-  #lineText {
-    width: 100%;
-    height: 130px;
-    margin-top: 12px;
-    font-size: 13px;
-    font-family: inherit;
-    resize: vertical;
-    line-height: 1.6;
-  }
-
-  #copyBtn {
-    background: var(--success);
-    margin-top: 10px;
-  }
-  #copyBtn:hover { background: #4a6450; }
+  #lineText { height: 120px; resize: vertical; line-height: 1.6; font-size: 12.5px; }
 
   #copyStatus {
     text-align: center;
-    font-size: 12px;
+    font-size: 11.5px;
     color: var(--success);
     height: 16px;
     margin-top: 6px;
     font-weight: 600;
   }
 
-  .attr {
-    text-align: center;
-    font-size: 10.5px;
-    color: var(--text-secondary);
-    margin-top: 20px;
-  }
+  /* ===== History ===== */
+  .history-item { padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.04); }
+  .history-item:last-of-type { border-bottom: none; }
+  .history-meta { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted); }
+  .history-route { font-size: 12.5px; margin-top: 3px; color: var(--text-secondary); }
+  .history-cost { display: flex; justify-content: space-between; margin-top: 4px; }
+  .history-total { font-size: 12px; color: var(--text-muted); }
+  .history-per { font-family: var(--font-mono); font-weight: 700; color: var(--accent); font-size: 13px; }
+
+  .attr { text-align: center; font-size: 10.5px; color: var(--text-muted); margin-top: 24px; }
 </style>
 </head>
 <body>
@@ -388,144 +432,195 @@
   <header>
     <div class="icon"><i class="ti ti-flame" aria-hidden="true"></i></div>
     <h1>ガソリン代 自動割り勘</h1>
-    <p>地図で出発地点・到着地点を選んでサクッと精算</p>
+    <p>地図でルートを選んでサクッと精算</p>
   </header>
 
-  <!-- ===== 地図カード ===== -->
-  <div class="card">
-    <h2><span class="card-icon"><i class="ti ti-map-2" aria-hidden="true"></i></span>ルートを選ぶ</h2>
-
-    <div class="search-row">
-      <input id="searchInput" type="text" placeholder="地名・施設名で検索（例：富士急ハイランド）">
-      <button id="searchBtn" type="button">検索</button>
+  <div class="steps">
+    <div class="step-item step-active" id="si1">
+      <div class="step-circle">1</div>
+      <div class="step-label">ルート</div>
     </div>
-
-    <div id="map"></div>
-
-    <p class="map-hint">①「出発地点」または「到着地点」ボタンを押す → ②地図をクリックして場所を指定。検索した場合は地図が移動するので、その後クリックで確定します。「現在地」ボタンを押せば、地図を使わずスマホの位置情報からそのまま記録できます。</p>
-
-    <div class="point-buttons">
-      <div class="point-group">
-        <button class="point-btn start" id="setStartBtn" type="button">
-          <span><span class="dot"></span>出発地点</span>
-          <span class="label-name" id="startLabel">未設定</span>
-        </button>
-        <button class="geo-btn" id="startGeoBtn" type="button"><i class="ti ti-current-location" aria-hidden="true"></i> 現在地にする</button>
-      </div>
-      <div class="point-group">
-        <button class="point-btn end" id="setEndBtn" type="button">
-          <span><span class="dot"></span>到着地点</span>
-          <span class="label-name" id="endLabel">未設定</span>
-        </button>
-        <button class="geo-btn" id="endGeoBtn" type="button"><i class="ti ti-current-location" aria-hidden="true"></i> 現在地にする</button>
-      </div>
+    <div class="step-item" id="si2">
+      <div class="step-circle">2</div>
+      <div class="step-label">条件</div>
     </div>
-    <p class="note">※現在地の取得には位置情報の利用許可が必要です。ブラウザの仕様上、HTTPS接続（またはlocalhost）でないと動作しない場合があります。</p>
-
-    <div class="distance-row">
-      <label for="distance" style="margin:0;">走行距離（km）</label>
-      <input id="distance" type="number" min="0" step="0.1" placeholder="-">
+    <div class="step-item" id="si3">
+      <div class="step-circle">3</div>
+      <div class="step-label">精算</div>
     </div>
-    <p class="note">※出発地点・到着地点から実際の道路距離を自動計算した値です。手入力で調整することもできます。この距離を使ってガソリン代を計算します。</p>
   </div>
 
-  <!-- ===== グループカード ===== -->
-  <div class="card" id="groupCard">
-    <h2><span class="card-icon"><i class="ti ti-users" aria-hidden="true"></i></span>グループ</h2>
+  <!-- ===== Step 1: Route ===== -->
+  <div class="step-panel active" id="step1">
+    <div class="card accent">
+      <h2><span class="card-icon"><i class="ti ti-map-2" aria-hidden="true"></i></span>ルートを選ぶ</h2>
 
-    <div id="groupNotLoaded">
-      <p class="note">グループを作っておくと、メンバー名や精算履歴をいつでも呼び出せます。作らなくても通常通り使えます。</p>
-      <label for="groupNameInput">グループ名（任意）</label>
-      <input id="groupNameInput" type="text" placeholder="例：箱根ドライブ">
-      <label for="memberInput">メンバー（改行で1人ずつ入力）</label>
-      <textarea id="memberInput" rows="3" placeholder="ゆうき&#10;たろう&#10;はなこ" style="width:100%;font-family:inherit;font-size:14px;padding:9px 10px;border:1.5px solid var(--card-border);border-radius:10px;background:#FBFAF6;"></textarea>
-      <button id="createGroupBtn" type="button" style="margin-top:12px;">グループを作成</button>
-    </div>
-
-    <div id="groupLoaded" style="display:none;">
-      <p class="note">グループ名：<strong id="groupNameDisplay">-</strong></p>
-      <label for="memberEditInput">メンバー（改行で1人ずつ入力）</label>
-      <textarea id="memberEditInput" rows="3" style="width:100%;font-family:inherit;font-size:14px;padding:9px 10px;border:1.5px solid var(--card-border);border-radius:10px;background:#FBFAF6;"></textarea>
-      <button id="saveMembersBtn" type="button" style="margin-top:8px;">メンバーを保存</button>
-      <p class="note">このURLを友達に共有すると、同じグループ・履歴を見られます：</p>
       <div class="search-row">
-        <input id="groupShareUrl" type="text" readonly>
-        <button id="copyGroupUrlBtn" type="button"><i class="ti ti-clipboard" aria-hidden="true"></i></button>
+        <input id="searchInput" type="text" placeholder="地名・施設名で検索（例：富士急ハイランド）">
+        <button id="searchBtn" type="button"><i class="ti ti-search" aria-hidden="true"></i></button>
       </div>
+
+      <div id="map"></div>
+
+      <p class="map-hint">①「出発地点」または「到着地点」を押す → ②地図をクリックして場所を確定。</p>
+
+      <div class="point-buttons">
+        <div class="point-group">
+          <button class="point-btn start" id="setStartBtn" type="button">
+            <span><span class="dot"></span>出発地点</span>
+            <span class="label-name" id="startLabel">未設定</span>
+          </button>
+          <button class="geo-btn" id="startGeoBtn" type="button"><i class="ti ti-current-location" aria-hidden="true"></i> 現在地にする</button>
+        </div>
+        <div class="point-group">
+          <button class="point-btn end" id="setEndBtn" type="button">
+            <span><span class="dot"></span>到着地点</span>
+            <span class="label-name" id="endLabel">未設定</span>
+          </button>
+          <button class="geo-btn" id="endGeoBtn" type="button"><i class="ti ti-current-location" aria-hidden="true"></i> 現在地にする</button>
+        </div>
+      </div>
+      <p class="note">※現在地の取得には位置情報の利用許可が必要です。</p>
+
+      <div class="distance-row">
+        <label for="distance" style="margin:0;">走行距離（km）</label>
+        <input id="distance" type="number" min="0" step="0.1" placeholder="-">
+      </div>
+      <p class="note">※道路距離を自動計算。手入力で調整も可能です。</p>
+    </div>
+
+    <div class="nav-row">
+      <button type="button" onclick="goToStep(2)">次へ — 計算条件を入力 <i class="ti ti-arrow-right" aria-hidden="true"></i></button>
     </div>
   </div>
 
-  <!-- ===== 履歴カード ===== -->
-  <div class="card" id="historyCard" style="display:none;">
-    <h2><span class="card-icon"><i class="ti ti-history" aria-hidden="true"></i></span>履歴</h2>
-    <div id="historyList"></div>
+  <!-- ===== Step 2: Conditions ===== -->
+  <div class="step-panel" id="step2">
+    <div class="card">
+      <h2><span class="card-icon"><i class="ti ti-car" aria-hidden="true"></i></span>車・人数の情報</h2>
+
+      <label for="fuelType">油種</label>
+      <select id="fuelType">
+        <option value="regular">レギュラー</option>
+        <option value="highoctane">ハイオク</option>
+        <option value="diesel">軽油</option>
+      </select>
+
+      <label for="price">単価（円/L）</label>
+      <input id="price" type="number" min="0" step="0.1" placeholder="例：170">
+      <p class="note" id="priceStatus">資源エネルギー庁の最新データを確認中…</p>
+
+      <label for="efficiency">燃費（km/L）</label>
+      <input id="efficiency" type="number" min="0" step="0.1" value="15">
+      <p class="note">※目安15km/L入力済み。自分の車の燃費が分かれば書き換えてください。</p>
+
+      <label for="people">割り勘する人数</label>
+      <input id="people" type="number" min="1" step="1" placeholder="例：4">
+    </div>
+
+    <div class="card" id="groupCard">
+      <h2><span class="card-icon"><i class="ti ti-users" aria-hidden="true"></i></span>グループ</h2>
+
+      <div id="groupNotLoaded">
+        <p class="note">グループを作っておくと、メンバー名や精算履歴をいつでも呼び出せます。作らなくても通常通り使えます。</p>
+        <label for="groupNameInput">グループ名（任意）</label>
+        <input id="groupNameInput" type="text" placeholder="例：箱根ドライブ">
+        <label for="memberInput">メンバー（改行で1人ずつ入力）</label>
+        <textarea id="memberInput" rows="3" placeholder="ゆうき&#10;たろう&#10;はなこ"></textarea>
+        <button id="createGroupBtn" type="button" class="btn-ghost" style="margin-top:12px;">グループを作成</button>
+      </div>
+
+      <div id="groupLoaded" style="display:none;">
+        <p class="note">グループ名：<strong id="groupNameDisplay" style="color:var(--text-primary);">-</strong></p>
+        <label for="memberEditInput">メンバー（改行で1人ずつ入力）</label>
+        <textarea id="memberEditInput" rows="3"></textarea>
+        <button id="saveMembersBtn" type="button" class="btn-ghost" style="margin-top:8px;">メンバーを保存</button>
+        <p class="note" style="margin-top:10px;">このURLを共有すると同じグループ・履歴を見られます：</p>
+        <div class="search-row">
+          <input id="groupShareUrl" type="text" readonly style="font-size:11px;">
+          <button id="copyGroupUrlBtn" type="button" style="width:auto; background:rgba(255,255,255,0.05); color:var(--text-secondary); border:1px solid rgba(255,255,255,0.08);"><i class="ti ti-clipboard" aria-hidden="true"></i></button>
+        </div>
+      </div>
+    </div>
+
+    <div class="nav-row">
+      <button type="button" class="btn-secondary" onclick="goToStep(1)"><i class="ti ti-arrow-left" aria-hidden="true"></i> 戻る</button>
+      <button id="calcBtn" type="button"><i class="ti ti-calculator" aria-hidden="true"></i> 計算する</button>
+    </div>
   </div>
 
-  <!-- ===== 計算条件カード ===== -->
-  <div class="card">
-    <h2><span class="card-icon"><i class="ti ti-car" aria-hidden="true"></i></span>車・人数の情報</h2>
+  <!-- ===== Step 3: Results ===== -->
+  <div class="step-panel" id="step3">
+    <div class="card accent" id="result">
+      <h2><span class="card-icon"><i class="ti ti-receipt" aria-hidden="true"></i></span>精算結果</h2>
 
-    <label for="fuelType">油種</label>
-    <select id="fuelType">
-      <option value="regular">レギュラー</option>
-      <option value="highoctane">ハイオク</option>
-      <option value="diesel">軽油</option>
-    </select>
+      <div class="result-row highlight">
+        <span class="result-label">1人あたり</span>
+        <span class="result-value" id="rPerPerson">-</span>
+      </div>
+      <div class="result-row">
+        <span class="result-label">合計ガソリン代</span>
+        <span class="result-value" id="rTotal">-</span>
+      </div>
+      <div class="result-row">
+        <span class="result-label">総走行距離</span>
+        <span class="result-value" id="rDistance">-</span>
+      </div>
 
-    <label for="price">単価（円/L）</label>
-    <input id="price" type="number" min="0" step="0.1" placeholder="例：170">
-    <p class="note" id="priceStatus">資源エネルギー庁の最新データを確認中…</p>
+      <label for="lineText">精算用テキスト（LINEなどに貼れます）</label>
+      <textarea id="lineText" readonly></textarea>
+      <button id="copyBtn" type="button" class="btn-success" style="margin-top:10px;"><i class="ti ti-clipboard" aria-hidden="true"></i> 精算用テキストをコピー</button>
+      <div id="copyStatus"></div>
+      <button id="saveHistoryBtn" type="button" class="btn-success" style="display:none; margin-top:8px;"><i class="ti ti-bookmark" aria-hidden="true"></i> この精算をグループの履歴に保存</button>
+    </div>
 
-    <label for="efficiency">燃費（km/L）</label>
-    <input id="efficiency" type="number" min="0" step="0.1" value="15">
-    <p class="note">※未給油でも計算できるよう、目安として15km/Lを入力しています。自分の車の燃費が分かれば書き換えてください（給油した場合はレシートの数値から逆算すると正確です）。</p>
+    <div class="card" id="historyCard" style="display:none;">
+      <h2><span class="card-icon"><i class="ti ti-history" aria-hidden="true"></i></span>履歴</h2>
+      <div id="historyList"></div>
+    </div>
 
-    <label for="people">割り勘する人数</label>
-    <input id="people" type="number" min="1" step="1" placeholder="例：4">
-
-    <button id="calcBtn" type="button">計算する</button>
+    <div class="nav-row">
+      <button type="button" class="btn-secondary" onclick="goToStep(2)"><i class="ti ti-arrow-left" aria-hidden="true"></i> 条件を修正</button>
+      <button type="button" class="btn-secondary" onclick="goToStep(1)"><i class="ti ti-refresh" aria-hidden="true"></i> はじめから</button>
+    </div>
   </div>
 
-  <!-- ===== 結果カード ===== -->
-  <div class="card result-card" id="result">
-    <h2><span class="card-icon"><i class="ti ti-receipt" aria-hidden="true"></i></span>精算結果</h2>
-
-    <div class="result-row"><span>総走行距離</span><span class="value" id="rDistance">-</span></div>
-    <div class="result-row"><span>合計ガソリン代</span><span class="value" id="rTotal">-</span></div>
-    <div class="result-row highlight"><span>1人あたり</span><span class="value" id="rPerPerson">-</span></div>
-
-    <label for="lineText">精算用テキスト（LINEなどに貼れます）</label>
-    <textarea id="lineText" readonly></textarea>
-    <button id="copyBtn" type="button"><i class="ti ti-clipboard" aria-hidden="true"></i> 精算用テキストをコピー</button>
-    <div id="copyStatus"></div>
-    <button id="saveHistoryBtn" type="button" style="display:none; margin-top:10px; background: var(--success);"><i class="ti ti-bookmark" aria-hidden="true"></i> この精算をグループの履歴に保存</button>
-  </div>
-
-  <p class="attr">地図データ &copy; OpenStreetMap contributors</p>
+  <p class="attr">地図データ &copy; OpenStreetMap contributors | &copy; CARTO</p>
 </div>
 
 <script>
 // =========================================================
-// 1. 地図のセットアップ（Leaflet + OpenStreetMap、APIキー不要）
+// ステップ切り替え
 // =========================================================
-const map = L.map('map', { zoomControl: true }).setView([35.681, 139.767], 6); // 初期表示：日本全体が見える程度
+function goToStep(n) {
+  [1, 2, 3].forEach(i => {
+    document.getElementById('step' + i).classList.toggle('active', i === n);
+    const si = document.getElementById('si' + i);
+    si.classList.toggle('step-active', i === n);
+    si.classList.toggle('step-done', i < n);
+  });
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
 
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-  attribution: '&copy; OpenStreetMap contributors',
-  maxZoom: 18,
+// =========================================================
+// 1. 地図のセットアップ（Leaflet + CartoDB Dark tiles）
+// =========================================================
+const map = L.map('map', { zoomControl: true }).setView([35.681, 139.767], 6);
+
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+  maxZoom: 19,
 }).addTo(map);
 
-// 出発地点・到着地点用のマーカー（最初はまだ置かない）
 let startMarker = null;
 let endMarker = null;
 let startLatLng = null;
 let endLatLng = null;
-let routeLine = null; // 2点を結ぶ直線
-let startPrefecture = null; // 出発地点の都道府県（地域平均価格の算出に使う）
-let endPrefecture = null;   // 到着地点の都道府県
-let lastCalcResult = null;  // 直近の計算結果（履歴保存に使う）
+let routeLine = null;
+let startPrefecture = null;
+let endPrefecture = null;
+let lastCalcResult = null;
 
-// 都道府県 → 資源エネルギー庁の9地域区分（経済産業局の管轄と一致）
 const PREFECTURE_TO_REGION = {
   '北海道': '北海道',
   '青森県': '東北', '岩手県': '東北', '宮城県': '東北', '秋田県': '東北', '山形県': '東北', '福島県': '東北',
@@ -543,17 +638,15 @@ function prefectureToRegion(prefecture) {
   return PREFECTURE_TO_REGION[prefecture] || null;
 }
 
-// 出発=オレンジ系、到着=グリーン系のピンにする
 function makeDivIcon(color) {
   return L.divIcon({
     className: '',
-    html: `<div style="width:18px;height:18px;border-radius:50%;background:${color};border:3px solid white;box-shadow:0 1px 4px rgba(0,0,0,0.4);"></div>`,
-    iconSize: [18, 18],
-    iconAnchor: [9, 9],
+    html: `<div style="width:16px;height:16px;border-radius:50%;background:${color};border:2.5px solid rgba(255,255,255,0.9);box-shadow:0 1px 6px rgba(0,0,0,0.5);"></div>`,
+    iconSize: [16, 16],
+    iconAnchor: [8, 8],
   });
 }
 
-// 現在、地図クリックでどちらの地点をセットするモードか（null / 'start' / 'end'）
 let pickMode = null;
 
 document.getElementById('setStartBtn').addEventListener('click', () => setPickMode('start'));
@@ -565,8 +658,6 @@ function setPickMode(mode) {
   document.getElementById('setEndBtn').classList.toggle('active', mode === 'end');
 }
 
-// ----- 現在地ボタン -----
-// 地図をクリックする代わりに、スマホ/PCのブラウザが持つ位置情報をそのまま出発地点・到着地点にする。
 document.getElementById('startGeoBtn').addEventListener('click', () => useCurrentLocation('start'));
 document.getElementById('endGeoBtn').addEventListener('click', () => useCurrentLocation('end'));
 
@@ -575,31 +666,26 @@ function useCurrentLocation(which) {
     alert('お使いのブラウザは位置情報の取得に対応していません。地図をクリックして指定してください。');
     return;
   }
-
   const btn = document.getElementById(which === 'start' ? 'startGeoBtn' : 'endGeoBtn');
-  const originalLabel = btn.textContent;
+  const originalHTML = btn.innerHTML;
   btn.disabled = true;
   btn.textContent = '取得中…';
-
   navigator.geolocation.getCurrentPosition(
     (position) => {
       const latlng = L.latLng(position.coords.latitude, position.coords.longitude);
       map.setView(latlng, 15);
-      placePoint(which, latlng); // 既存のピン設置処理（マーカー設置・逆ジオコーディング・距離再計算）を再利用
+      placePoint(which, latlng);
       btn.disabled = false;
-      btn.textContent = originalLabel;
+      btn.innerHTML = originalHTML;
     },
     (error) => {
       btn.disabled = false;
-      btn.textContent = originalLabel;
-
+      btn.innerHTML = originalHTML;
       let message = '現在地を取得できませんでした。地図をクリックして指定してください。';
       if (error.code === error.PERMISSION_DENIED) {
         message = '位置情報の利用が許可されていません。ブラウザの設定で位置情報を許可してから、もう一度お試しください。';
       } else if (error.code === error.TIMEOUT) {
         message = '位置情報の取得がタイムアウトしました。電波の良い場所でもう一度お試しください。';
-      } else if (error.code === error.POSITION_UNAVAILABLE) {
-        message = '現在地の取得に失敗しました（GPSが利用できない環境かもしれません）。';
       }
       alert(message);
     },
@@ -607,20 +693,14 @@ function useCurrentLocation(which) {
   );
 }
 
-// 地図クリックで現在のモードに応じてマーカーを置く
 map.on('click', (e) => {
-  if (pickMode === 'start') {
-    placePoint('start', e.latlng);
-  } else if (pickMode === 'end') {
-    placePoint('end', e.latlng);
-  } else {
-    // モード未選択の場合は何もしない（先にボタンを押してもらう）
-  }
+  if (pickMode === 'start') placePoint('start', e.latlng);
+  else if (pickMode === 'end') placePoint('end', e.latlng);
 });
 
-// 地点を置く処理（マーカー設置 → ラベル更新 → 距離再計算）
 async function placePoint(which, latlng) {
-  const icon = makeDivIcon(which === 'start' ? '#B5673F' : '#5C7A63');
+  const color = which === 'start' ? '#F97316' : '#22D3EE';
+  const icon = makeDivIcon(color);
 
   if (which === 'start') {
     if (startMarker) map.removeLayer(startMarker);
@@ -636,10 +716,8 @@ async function placePoint(which, latlng) {
     document.getElementById('endLabel').textContent = '検索中…';
   }
 
-  // ボタンの選択状態を解除（1回置いたらモードは自動で終了）
   setPickMode(null);
 
-  // 地名・都道府県を逆引き取得（失敗しても緯度経度を表示するのでアプリは止まらない）
   const { label, prefecture } = await reverseGeocode(latlng.lat, latlng.lng);
   document.getElementById(which === 'start' ? 'startLabel' : 'endLabel').textContent = label;
   if (which === 'start') startPrefecture = prefecture;
@@ -649,9 +727,6 @@ async function placePoint(which, latlng) {
   updateSuggestedPrice();
 }
 
-// 緯度経度 → 地名＋都道府県（Nominatim、無料・APIキー不要）
-// addressdetails=1 を付けて構造化データを取得し、都道府県名は display_name の文字列分割ではなく
-// address.state（または都道府県相当のフィールド）から確実に取り出す。
 async function reverseGeocode(lat, lon) {
   try {
     const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=16&addressdetails=1&accept-language=ja`);
@@ -659,7 +734,6 @@ async function reverseGeocode(lat, lon) {
     let label = `(${lat.toFixed(4)}, ${lon.toFixed(4)})`;
     let prefecture = null;
     if (data && data.display_name) {
-      // 長すぎるので先頭の2要素くらいに短縮
       label = data.display_name.split(',').slice(0, 2).join(',').trim();
     }
     if (data && data.address) {
@@ -667,70 +741,44 @@ async function reverseGeocode(lat, lon) {
     }
     return { label, prefecture };
   } catch (err) {
-    console.warn('逆ジオコーディング失敗', err);
     return { label: `(${lat.toFixed(4)}, ${lon.toFixed(4)})`, prefecture: null };
   }
 }
 
-// 地名検索（Nominatim） → 地図を移動。モード選択中ならそのままピンも置く
 document.getElementById('searchBtn').addEventListener('click', doSearch);
-document.getElementById('searchInput').addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') doSearch();
-});
+document.getElementById('searchInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') doSearch(); });
 
 async function doSearch() {
   const q = document.getElementById('searchInput').value.trim();
   if (!q) return;
-
   try {
     const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&countrycodes=jp&limit=1`);
     const results = await res.json();
-    if (!results.length) {
-      alert('該当する場所が見つかりませんでした。別の表記で試してください。');
-      return;
-    }
+    if (!results.length) { alert('該当する場所が見つかりませんでした。別の表記で試してください。'); return; }
     const { lat, lon } = results[0];
     const latlng = L.latLng(parseFloat(lat), parseFloat(lon));
     map.setView(latlng, 14);
-
-    // 出発/到着のどちらかを選択中なら、検索結果の地点をそのままセット
-    if (pickMode === 'start' || pickMode === 'end') {
-      placePoint(pickMode, latlng);
-    }
+    if (pickMode === 'start' || pickMode === 'end') placePoint(pickMode, latlng);
   } catch (err) {
     alert('検索中にエラーが発生しました。通信環境を確認してください。');
   }
 }
 
-// 2点が揃ったら実際の道路に沿ったルートを取得して描画し、距離（km）をフォームに反映する。
-// サーバー（Cloudflare Worker経由のOpenRouteService）への問い合わせに失敗した場合は、
-// 従来どおり直線距離（Haversine）にフォールバックし、アプリ自体は止めない。
 async function updateRouteAndDistance() {
   if (routeLine) { map.removeLayer(routeLine); routeLine = null; }
   if (!startLatLng || !endLatLng) return;
 
-  const hint = document.querySelector('.map-hint');
-
   try {
-    const res = await fetch(
-      `/api/route?startLat=${startLatLng.lat}&startLng=${startLatLng.lng}&endLat=${endLatLng.lat}&endLng=${endLatLng.lng}`
-    );
+    const res = await fetch(`/api/route?startLat=${startLatLng.lat}&startLng=${startLatLng.lng}&endLat=${endLatLng.lat}&endLng=${endLatLng.lng}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     if (data.error || !data.geometry || !data.geometry.length) throw new Error(data.error || 'ルート取得失敗');
 
-    routeLine = L.polyline(data.geometry, {
-      color: '#CC785C',
-      weight: 4,
-    }).addTo(map);
+    routeLine = L.polyline(data.geometry, { color: '#22D3EE', weight: 3, opacity: 0.85 }).addTo(map);
     document.getElementById('distance').value = data.distanceKm.toFixed(1);
   } catch (err) {
     console.warn('道路ルートの取得に失敗したため、直線距離で代用します:', err);
-    routeLine = L.polyline([startLatLng, endLatLng], {
-      color: '#CC785C',
-      weight: 3,
-      dashArray: '6 6',
-    }).addTo(map);
+    routeLine = L.polyline([startLatLng, endLatLng], { color: '#22D3EE', weight: 2, dashArray: '6 6', opacity: 0.6 }).addTo(map);
     const km = haversineKm(startLatLng.lat, startLatLng.lng, endLatLng.lat, endLatLng.lng);
     document.getElementById('distance').value = km.toFixed(1);
   }
@@ -738,27 +786,20 @@ async function updateRouteAndDistance() {
   map.fitBounds(routeLine.getBounds(), { padding: [24, 24] });
 }
 
-// 2点間の直線距離（km）をHaversine公式で計算
 function haversineKm(lat1, lon1, lat2, lon2) {
-  const R = 6371; // 地球の半径(km)
+  const R = 6371;
   const toRad = (deg) => (deg * Math.PI) / 180;
   const dLat = toRad(lat2 - lat1);
   const dLon = toRad(lon2 - lon1);
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 // =========================================================
-// 1.5 資源エネルギー庁の最新ガソリン価格を読み込む
-//   ※ブラウザから資源エネルギー庁のサイトを直接fetchすることはCORSの制約でできないため、
-//     scripts/fetch-gas-price.js（サーバー側で実行）が生成した price.json を読み込む方式にしている。
-//     まだ price.json を生成していない/取得に失敗した場合は、単価は手入力のまま使える。
+// 1.5 ガソリン価格の自動取得
 // =========================================================
-let latestPrices = null; // { regular, highoctane, diesel } … 全国平均（フォールバック用）
-let regionPrices = null; // { regular: {北海道, 東北, ...}, highoctane: {...}, diesel: {...} }
+let latestPrices = null;
+let regionPrices = null;
 let priceWeekOf = null;
 
 async function loadLatestGasPrice() {
@@ -770,21 +811,15 @@ async function loadLatestGasPrice() {
     latestPrices = data.prices;
     regionPrices = data.regionPrices || null;
     priceWeekOf = data.weekOf || null;
-
     if (data.isExample) {
-      statusEl.textContent = `⚠ これはサンプル価格です（実データではありません）。scripts/fetch-gas-price.js を実行すると実際の最新価格に更新されます。`;
+      statusEl.textContent = '⚠ サンプル価格です（実データではありません）。';
     }
     updateSuggestedPrice();
   } catch (err) {
-    // price.json が無い／読み込めない場合はここに来る。アプリは止めず手入力に倒す。
-    statusEl.textContent = '最新価格を自動取得できませんでした。お手数ですが単価は手入力してください。';
-    console.warn('price.json の読み込みに失敗しました（scripts/fetch-gas-price.js を実行して生成してください）', err);
+    statusEl.textContent = '最新価格を自動取得できませんでした。単価は手入力してください。';
   }
 }
 
-// 出発地点・到着地点の都道府県から地域（北海道〜沖縄の9区分）を求め、
-// 2地点の地域平均価格を単価欄に提案する。地域が分からない場合は全国平均にフォールバックする。
-// すでに単価欄に値が入っている場合は上書きしない（手入力を優先）。
 function updateSuggestedPrice() {
   if (!latestPrices) return;
   const statusEl = document.getElementById('priceStatus');
@@ -800,36 +835,33 @@ function updateSuggestedPrice() {
   let statusText;
 
   if (regionPrices && regionPrices[fuelType] && regions.length > 0) {
-    const values = regions
-      .map((r) => regionPrices[fuelType][r])
-      .filter((v) => v !== undefined);
+    const values = regions.map((r) => regionPrices[fuelType][r]).filter((v) => v !== undefined);
     if (values.length > 0) {
       suggestedPrice = values.reduce((a, b) => a + b, 0) / values.length;
-      statusText = `${regions.join('・')}地方の平均価格を反映しました${dateStr}。レシートを見て手入力で調整もできます。`;
+      statusText = `${regions.join('・')}地方の平均価格を反映しました${dateStr}。`;
     }
   }
 
   if (suggestedPrice === null && latestPrices[fuelType] !== undefined) {
     suggestedPrice = latestPrices[fuelType];
-    statusText = `全国平均価格を反映しました${dateStr}。出発地点・到着地点を選ぶと地域の平均価格に切り替わります。`;
+    statusText = `全国平均価格を反映しました${dateStr}。`;
   }
 
   if (suggestedPrice === null) return;
-
   statusEl.textContent = statusText;
-  if (priceInput.value) return; // ユーザーが既に手入力している場合は値を上書きしない
+  if (priceInput.value) return;
   priceInput.value = Math.round(suggestedPrice * 10) / 10;
 }
 
 document.getElementById('fuelType').addEventListener('change', () => {
-  document.getElementById('price').value = ''; // 油種を変えたら一度クリアして再提案
+  document.getElementById('price').value = '';
   updateSuggestedPrice();
 });
 
 loadLatestGasPrice();
 
 // =========================================================
-// 2. ガソリン代の計算ロジック（前バージョンと同じ式）
+// 2. 計算ロジック
 // =========================================================
 function calcGasCost({ distanceKm, fuelEfficiencyKmPerL, unitPricePerL, peopleCount }) {
   if (distanceKm <= 0 || fuelEfficiencyKmPerL <= 0 || unitPricePerL <= 0 || peopleCount <= 0) {
@@ -850,12 +882,8 @@ function fuelTypeLabel(value) {
   }
 }
 
-function formatYen(n) {
-  return Math.round(n).toLocaleString('ja-JP') + '円';
-}
-function formatKm(n) {
-  return n.toLocaleString('ja-JP', { maximumFractionDigits: 1 }) + 'km';
-}
+function formatYen(n) { return Math.round(n).toLocaleString('ja-JP') + '円'; }
+function formatKm(n) { return n.toLocaleString('ja-JP', { maximumFractionDigits: 1 }) + 'km'; }
 
 function buildLineText({ from, to, distanceKm, fuelType, usedFuelLiters, totalCostYen, perPersonYen, peopleCount }) {
   const fromTo = (from && to) ? `${from} → ${to}\n` : '';
@@ -910,10 +938,9 @@ document.getElementById('calcBtn').addEventListener('click', () => {
     peopleCount,
   });
   document.getElementById('lineText').value = lineText;
-
-  document.getElementById('result').classList.add('show');
   document.getElementById('copyStatus').textContent = '';
-  document.getElementById('result').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+  goToStep(3);
 });
 
 document.getElementById('copyBtn').addEventListener('click', async () => {
@@ -930,11 +957,9 @@ document.getElementById('copyBtn').addEventListener('click', async () => {
 });
 
 // =========================================================
-// 3. グループ・履歴機能（Cloudflare Worker経由のSupabase）
-//    ログイン不要。グループ作成時に発行される「共有コード」をURLの
-//    ?group=コード に付けて友達に渡すことで、同じグループ・履歴にアクセスできる。
+// 3. グループ・履歴機能
 // =========================================================
-let currentGroup = null; // { id, code, name, members: [...], trips: [...] }
+let currentGroup = null;
 
 function getGroupCodeFromUrl() {
   return new URLSearchParams(window.location.search).get('group');
@@ -963,18 +988,16 @@ function renderGroupLoaded() {
   const shareUrl = `${window.location.origin}${window.location.pathname}?group=${currentGroup.code}`;
   document.getElementById('groupShareUrl').value = shareUrl;
 
-  // メンバー数を人数欄に反映（手入力で上書き可）
   if (currentGroup.members.length > 0) {
     document.getElementById('people').value = currentGroup.members.length;
   }
 
-  document.getElementById('saveHistoryBtn').style.display = 'block';
+  document.getElementById('saveHistoryBtn').style.display = 'flex';
 }
 
 document.getElementById('createGroupBtn').addEventListener('click', async () => {
   const name = document.getElementById('groupNameInput').value.trim();
-  const members = document.getElementById('memberInput').value
-    .split('\n').map((s) => s.trim()).filter(Boolean);
+  const members = document.getElementById('memberInput').value.split('\n').map((s) => s.trim()).filter(Boolean);
 
   const btn = document.getElementById('createGroupBtn');
   btn.disabled = true;
@@ -988,7 +1011,6 @@ document.getElementById('createGroupBtn').addEventListener('click', async () => 
     const data = await res.json();
     if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
 
-    // URLにコードを反映してから、グループ情報を読み込む
     const url = new URL(window.location.href);
     url.searchParams.set('group', data.code);
     window.history.replaceState({}, '', url);
@@ -1005,8 +1027,7 @@ document.getElementById('createGroupBtn').addEventListener('click', async () => 
 
 document.getElementById('saveMembersBtn').addEventListener('click', async () => {
   if (!currentGroup) return;
-  const members = document.getElementById('memberEditInput').value
-    .split('\n').map((s) => s.trim()).filter(Boolean);
+  const members = document.getElementById('memberEditInput').value.split('\n').map((s) => s.trim()).filter(Boolean);
 
   const btn = document.getElementById('saveMembersBtn');
   btn.disabled = true;
@@ -1034,13 +1055,8 @@ document.getElementById('saveMembersBtn').addEventListener('click', async () => 
 
 document.getElementById('copyGroupUrlBtn').addEventListener('click', async () => {
   const url = document.getElementById('groupShareUrl').value;
-  try {
-    await navigator.clipboard.writeText(url);
-  } catch (err) {
-    const input = document.getElementById('groupShareUrl');
-    input.select();
-    document.execCommand('copy');
-  }
+  try { await navigator.clipboard.writeText(url); }
+  catch (err) { document.getElementById('groupShareUrl').select(); document.execCommand('copy'); }
 });
 
 function renderHistory() {
@@ -1055,15 +1071,12 @@ function renderHistory() {
     const date = t.created_at ? new Date(t.created_at).toLocaleDateString('ja-JP') : '';
     const route = (t.start_label && t.end_label) ? `${t.start_label} → ${t.end_label}` : '';
     return `
-      <div class="result-row" style="display:block; padding: 10px 0;">
-        <div style="display:flex; justify-content:space-between; font-size:12px; color:var(--text-secondary);">
-          <span>${date}</span>
-          <span>${t.distance_km != null ? Number(t.distance_km).toFixed(1) + 'km' : ''}</span>
-        </div>
-        <div style="font-size:13px; margin-top:2px;">${route}</div>
-        <div style="display:flex; justify-content:space-between; margin-top:4px;">
-          <span style="font-size:12.5px; color:var(--text-secondary);">合計 ${t.total_cost_yen != null ? formatYen(t.total_cost_yen) : '-'}</span>
-          <span style="font-weight:700; color:var(--accent);">1人 ${t.per_person_yen != null ? formatYen(t.per_person_yen) : '-'}</span>
+      <div class="history-item">
+        <div class="history-meta"><span>${date}</span><span>${t.distance_km != null ? Number(t.distance_km).toFixed(1) + 'km' : ''}</span></div>
+        <div class="history-route">${route}</div>
+        <div class="history-cost">
+          <span class="history-total">合計 ${t.total_cost_yen != null ? formatYen(t.total_cost_yen) : '-'}</span>
+          <span class="history-per">1人 ${t.per_person_yen != null ? formatYen(t.per_person_yen) : '-'}</span>
         </div>
       </div>`;
   }).join('');
@@ -1112,7 +1125,6 @@ document.getElementById('saveHistoryBtn').addEventListener('click', async () => 
   }
 });
 
-// ページ読み込み時、URLに ?group=コード があれば自動でグループを読み込む
 const initialGroupCode = getGroupCodeFromUrl();
 if (initialGroupCode) loadGroup(initialGroupCode);
 </script>
