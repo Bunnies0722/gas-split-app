@@ -7,10 +7,10 @@
  *    → このコミットがCloudflareのGit連携の再デプロイを自動的にトリガーするので、
  *      手動でnode実行・git push・再デプロイをする必要がなくなる。
  *
- * 3. GET /api/route で、出発地点・到着地点の緯度経度からOpenRouteService Directions APIを呼び、
- *    実際の道路に沿ったルート（geometry）と道路距離（km）を返す。
- *    フロント（prototype/index.html）からはAPIキーを直接呼ばず、必ずこのエンドポイント経由にすることで
- *    APIキーをブラウザに公開しないようにしている。
+ * 3. GET /api/route で、出発地点・到着地点の緯度経度から道路に沿ったルート・距離を返す。
+ *    avoidHighways=false → OSRM公開インスタンス（APIキー不要）
+ *    avoidHighways=true  → Valhalla公開インスタンス（APIキー不要、use_highways:0で高速回避）
+ *    いずれも外部APIキー不要。
  *
  * 4. /api/groups 以下のエンドポイントで、グループ（メンバー名）と精算履歴をSupabase（Postgres）に保存する。
  *    ログイン不要。グループ作成時に発行されるランダムな共有コードが、そのままアクセス権のような役割を果たす
@@ -201,40 +201,92 @@ async function getRoute(url, env) {
   const errors = [];
 
   if (!avoidHighways) {
-    // 通常ルート: OSRMを優先（APIキー不要、安定）
+    // 高速道路あり: OSRM（APIキー不要、安定）
     try {
       return await fetchRouteOSRM(startLat, startLng, endLat, endLng, { avoidanceRequested: false, avoidanceApplied: false });
     } catch (err) {
       errors.push(err.message);
     }
-    // OSRMが失敗したらORSにフォールバック
-    if (env.ORS_API_KEY) {
-      try {
-        return await fetchRouteORS(startLat, startLng, endLat, endLng, false, env.ORS_API_KEY);
-      } catch (err) {
-        errors.push(err.message);
-      }
-    }
   } else {
-    // 一般道のみ: ORSで高速回避（GET形式、以前動作確認済み）
-    if (env.ORS_API_KEY) {
-      try {
-        return await fetchRouteORS(startLat, startLng, endLat, endLng, true, env.ORS_API_KEY);
-      } catch (err) {
-        errors.push(err.message);
-      }
-    } else {
-      errors.push('ORS_API_KEY が未設定');
-    }
-    // ORSが失敗したらOSRMにフォールバック（高速回避なし・要通知）
+    // 一般道のみ: Valhalla公式（APIキー不要、use_highways:0 で確実に高速回避）
     try {
-      return await fetchRouteOSRM(startLat, startLng, endLat, endLng, { avoidanceRequested: true, avoidanceApplied: false });
+      return await fetchRouteValhalla(startLat, startLng, endLat, endLng);
     } catch (err) {
       errors.push(err.message);
+      // Valhallaが失敗した場合はOSRMにフォールバック（高速回避なし・要通知）
+      try {
+        return await fetchRouteOSRM(startLat, startLng, endLat, endLng, { avoidanceRequested: true, avoidanceApplied: false });
+      } catch (err2) {
+        errors.push(err2.message);
+      }
     }
   }
 
   throw new Error(`ルート取得失敗: ${errors.join(' / ')}`);
+}
+
+// Valhalla公式公開インスタンス（APIキー不要）でルートを取得する。
+// use_highways: 0.0 にすることで高速道路・有料道路を回避する。
+// エンドポイント: https://valhalla.openstreetmap.de (Geofabrik運営)
+async function fetchRouteValhalla(startLat, startLng, endLat, endLng) {
+  const body = {
+    locations: [
+      { lat: startLat, lon: startLng },
+      { lat: endLat, lon: endLng },
+    ],
+    costing: 'auto',
+    costing_options: {
+      auto: {
+        use_highways: 0.0,  // 0=完全回避, 1=積極利用
+        use_tolls: 0.0,     // 有料道路も回避
+      },
+    },
+  };
+
+  const res = await fetch('https://valhalla.openstreetmap.de/route', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'User-Agent': 'gas-split-app/1.0 (hobby project)',
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Valhalla HTTP ${res.status}: ${text.slice(0, 200)}`);
+  }
+
+  const data = await res.json();
+  if (!data.trip || !data.trip.legs || !data.trip.legs[0]) {
+    throw new Error('Valhalla: ルートなし');
+  }
+
+  const leg = data.trip.legs[0];
+  const distanceKm = leg.summary.length; // Valhallaはkm単位
+  // shapeはpolyline6エンコード（精度1e-6）。Leafletで使う[lat, lng]の順に返す。
+  const geometry = decodePolyline6(leg.shape);
+
+  return new Response(
+    JSON.stringify({ distanceKm, geometry, source: 'valhalla', avoidanceRequested: true, avoidanceApplied: true }),
+    { headers: { 'content-type': 'application/json; charset=utf-8' } }
+  );
+}
+
+// Valhallaのpolyline6エンコードをデコードして [[lat, lng], ...] の配列に変換する
+function decodePolyline6(encoded) {
+  const coords = [];
+  let index = 0, lat = 0, lng = 0;
+  while (index < encoded.length) {
+    let shift = 0, result = 0, b;
+    do { b = encoded.charCodeAt(index++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+    lat += (result & 1) ? ~(result >> 1) : (result >> 1);
+    shift = 0; result = 0;
+    do { b = encoded.charCodeAt(index++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+    lng += (result & 1) ? ~(result >> 1) : (result >> 1);
+    coords.push([lat / 1e6, lng / 1e6]);
+  }
+  return coords;
 }
 
 // OSRM（APIキー不要）でルートを取得する
@@ -260,41 +312,6 @@ async function fetchRouteOSRM(startLat, startLng, endLat, endLng, { avoidanceReq
   );
 }
 
-// ORS（OpenRouteService）でルートを取得する。
-// GET形式を使用（以前動作確認済み）。高速回避はoptionsパラメータで指定。
-async function fetchRouteORS(startLat, startLng, endLat, endLng, avoidHighways, apiKey) {
-  // ORSは経度,緯度の順
-  let orsUrl =
-    `https://api.openrouteservice.org/v2/directions/driving-car` +
-    `?api_key=${encodeURIComponent(apiKey)}` +
-    `&start=${startLng},${startLat}` +
-    `&end=${endLng},${endLat}`;
-
-  if (avoidHighways) {
-    // 高速道路（motorway/trunk）を回避するオプション
-    orsUrl += `&options=${encodeURIComponent(JSON.stringify({ avoid_features: ['highways'] }))}`;
-  }
-
-  const res = await fetch(orsUrl, {
-    headers: {
-      'Accept': 'application/geo+json, application/json',
-      'User-Agent': 'gas-split-app/1.0',
-    },
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`ORS HTTP ${res.status}: ${text.slice(0, 300)}`);
-  }
-  const data = await res.json();
-  const feature = data.features && data.features[0];
-  if (!feature) throw new Error('ORS: ルートなし');
-  const distanceKm = feature.properties.summary.distance / 1000;
-  const geometry = feature.geometry.coordinates.map(([lng, lat]) => [lat, lng]);
-  return new Response(
-    JSON.stringify({ distanceKm, geometry, source: 'ors', avoidanceRequested: avoidHighways, avoidanceApplied: avoidHighways }),
-    { headers: { 'content-type': 'application/json; charset=utf-8' } }
-  );
-}
 
 function jsonResponse(obj, status = 200) {
   return new Response(JSON.stringify(obj), {
