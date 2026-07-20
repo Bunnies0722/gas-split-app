@@ -87,9 +87,9 @@ export default {
     }
 
     // ルーティングAPIの診断エンドポイント
-    // /api/route-debug にアクセスすると Valhalla / OSRM の動作を直接確認できる
+    // /api/route-debug にアクセスすると OSRM / ORS の動作を直接確認できる
     if (url.pathname === '/api/route-debug') {
-      return await routeDebug();
+      return await routeDebug(env);
     }
 
     // グループ作成（メンバー名を保存する“箱”を作る）
@@ -176,8 +176,8 @@ async function updateGasPrice(env) {
   return result;
 }
 
-// /api/route-debug: OSRM 通常 vs exclude=motorway の動作確認（東京駅→大阪駅）
-async function routeDebug() {
+// /api/route-debug: OSRM / ORS の動作確認（東京駅→大阪駅）
+async function routeDebug(env) {
   const startLat = 35.6812, startLng = 139.7671; // 東京駅
   const endLat   = 34.7024, endLng   = 135.4959; // 大阪駅
   const results = {};
@@ -188,26 +188,52 @@ async function routeDebug() {
     const res = await fetch(url, { headers: { 'User-Agent': 'gas-split-app/1.0' } });
     const data = await res.json();
     results.osrm_with_highway = {
-      status: res.status,
-      code: data.code,
-      distanceKm: data.routes && data.routes[0] ? (data.routes[0].distance / 1000).toFixed(1) : null,
+      status: res.status, code: data.code,
+      distanceKm: data.routes?.[0] ? (data.routes[0].distance / 1000).toFixed(1) : null,
     };
-  } catch (err) {
-    results.osrm_with_highway = { error: err.message };
-  }
+  } catch (err) { results.osrm_with_highway = { error: err.message }; }
 
-  // OSRM exclude=motorway（一般道のみ）
-  try {
-    const url = `https://router.project-osrm.org/route/v1/driving/${startLng},${startLat};${endLng},${endLat}?overview=false&exclude=motorway`;
-    const res = await fetch(url, { headers: { 'User-Agent': 'gas-split-app/1.0' } });
-    const data = await res.json();
-    results.osrm_no_motorway = {
-      status: res.status,
-      code: data.code,
-      distanceKm: data.routes && data.routes[0] ? (data.routes[0].distance / 1000).toFixed(1) : null,
-    };
-  } catch (err) {
-    results.osrm_no_motorway = { error: err.message };
+  // ORS POST + ?api_key= + avoid_features（一般道のみ）
+  if (env.ORS_API_KEY) {
+    try {
+      const orsUrl = `https://api.openrouteservice.org/v2/directions/driving-car?api_key=${encodeURIComponent(env.ORS_API_KEY)}`;
+      const res = await fetch(orsUrl, {
+        method: 'POST',
+        headers: { 'Accept': 'application/json, application/geo+json', 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          coordinates: [[startLng, startLat], [endLng, endLat]],
+          options: { avoid_features: ['highways'] },
+        }),
+      });
+      const text = await res.text();
+      let data; try { data = JSON.parse(text); } catch { data = { raw: text.slice(0, 300) }; }
+      results.ors_no_highway = {
+        status: res.status,
+        distanceKm: data.features?.[0]?.properties?.summary?.distance
+          ? (data.features[0].properties.summary.distance / 1000).toFixed(1) : null,
+        error: data.error || data.message || null,
+      };
+    } catch (err) { results.ors_no_highway = { error: err.message }; }
+
+    // ORS POST 通常ルート（比較用）
+    try {
+      const orsUrl = `https://api.openrouteservice.org/v2/directions/driving-car?api_key=${encodeURIComponent(env.ORS_API_KEY)}`;
+      const res = await fetch(orsUrl, {
+        method: 'POST',
+        headers: { 'Accept': 'application/json, application/geo+json', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ coordinates: [[startLng, startLat], [endLng, endLat]] }),
+      });
+      const data = await res.json();
+      results.ors_with_highway = {
+        status: res.status,
+        distanceKm: data.features?.[0]?.properties?.summary?.distance
+          ? (data.features[0].properties.summary.distance / 1000).toFixed(1) : null,
+        error: data.error || data.message || null,
+      };
+    } catch (err) { results.ors_with_highway = { error: err.message }; }
+  } else {
+    results.ors_no_highway = { error: 'ORS_API_KEY not set' };
+    results.ors_with_highway = { error: 'ORS_API_KEY not set' };
   }
 
   return new Response(JSON.stringify(results, null, 2), {
@@ -247,21 +273,56 @@ async function getRoute(url, env) {
       errors.push(err.message);
     }
   } else {
-    // 一般道のみ: OSRM + exclude=motorway（高速道路クラスを除外）
+    // 一般道のみ: ORS POST + ?api_key= + avoid_features:highways
+    if (env.ORS_API_KEY) {
+      try {
+        return await fetchRouteORSNoHighway(startLat, startLng, endLat, endLng, env.ORS_API_KEY);
+      } catch (err) {
+        errors.push(err.message);
+      }
+    } else {
+      errors.push('ORS_API_KEY が未設定');
+    }
+    // ORS が失敗したら OSRM 通常ルートにフォールバック（要通知）
     try {
-      return await fetchRouteOSRM(startLat, startLng, endLat, endLng, { excludeMotorway: true });
+      return await fetchRouteOSRM(startLat, startLng, endLat, endLng, { excludeMotorway: false, avoidanceRequested: true, avoidanceApplied: false });
     } catch (err) {
       errors.push(err.message);
-      // motorway除外で経路なし（山岳部など）→ 通常ルートにフォールバック
-      try {
-        return await fetchRouteOSRM(startLat, startLng, endLat, endLng, { excludeMotorway: false, avoidanceRequested: true, avoidanceApplied: false });
-      } catch (err2) {
-        errors.push(err2.message);
-      }
     }
   }
 
   throw new Error(`ルート取得失敗: ${errors.join(' / ')}`);
+}
+
+// ORS POST + ?api_key= + avoid_features:highways で一般道ルートを取得する。
+// Authorization ヘッダーではなく URL クエリパラメータで認証する（GETと同じ方式）。
+async function fetchRouteORSNoHighway(startLat, startLng, endLat, endLng, apiKey) {
+  const orsUrl = `https://api.openrouteservice.org/v2/directions/driving-car?api_key=${encodeURIComponent(apiKey)}`;
+  const res = await fetch(orsUrl, {
+    method: 'POST',
+    headers: {
+      'Accept': 'application/json, application/geo+json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      coordinates: [[startLng, startLat], [endLng, endLat]],
+      options: { avoid_features: ['highways'] },
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`ORS HTTP ${res.status}: ${text.slice(0, 200)}`);
+  }
+  const data = await res.json();
+  const feature = data.features?.[0];
+  if (!feature) throw new Error('ORS: ルートなし');
+  const distanceKm = feature.properties.summary.distance / 1000;
+  // GeoJSONは[lng, lat]の順なので、Leafletで使う[lat, lng]の順に入れ替える
+  const geometry = feature.geometry.coordinates.map(([lng, lat]) => [lat, lng]);
+  return new Response(
+    JSON.stringify({ distanceKm, geometry, source: 'ors', avoidanceRequested: true, avoidanceApplied: true }),
+    { headers: { 'content-type': 'application/json; charset=utf-8' } }
+  );
 }
 
 // OSRM（APIキー不要）でルートを取得する。
