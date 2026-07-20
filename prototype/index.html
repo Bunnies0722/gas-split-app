@@ -262,6 +262,63 @@
 
   .map-hint { font-size: 11px; color: var(--text-muted); line-height: 1.5; margin: 0 0 8px; }
 
+  /* ルートタイプ選択 */
+  .route-type-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  .route-type-row .rt-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .toggle-group {
+    display: flex;
+    gap: 4px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 8px;
+    padding: 3px;
+    flex: 1;
+  }
+  .toggle-btn {
+    flex: 1;
+    padding: 6px 8px;
+    font-size: 11.5px;
+    font-weight: 600;
+    font-family: inherit;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+  }
+  .toggle-btn:hover { color: var(--text-secondary); }
+  .toggle-btn.active {
+    background: var(--accent-soft);
+    color: var(--accent);
+    border: 1px solid var(--accent-border);
+  }
+
+  /* 直線フォールバック警告 */
+  .fallback-warning {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: #FB923C;
+    background: rgba(251,146,60,0.08);
+    border: 1px solid rgba(251,146,60,0.2);
+    border-radius: 7px;
+    padding: 7px 10px;
+    margin-top: 8px;
+  }
+
   .distance-row {
     display: flex;
     align-items: center;
@@ -465,7 +522,20 @@
         <button id="searchBtn" type="button"><i class="ti ti-search" aria-hidden="true"></i></button>
       </div>
 
+      <div class="route-type-row">
+        <span class="rt-label"><i class="ti ti-road" aria-hidden="true"></i> ルート</span>
+        <div class="toggle-group">
+          <button class="toggle-btn active" id="rtHighway" type="button">🛣 高速道路あり</button>
+          <button class="toggle-btn" id="rtGeneral" type="button">🚗 一般道のみ</button>
+        </div>
+      </div>
+
       <div id="map"></div>
+
+      <div class="fallback-warning" id="routeFallbackWarning" style="display:none;">
+        <i class="ti ti-alert-triangle" aria-hidden="true"></i>
+        道路ルートの取得に失敗しました。直線距離で代用しています。
+      </div>
 
       <p class="map-hint">①「出発地点」または「到着地点」を押す → ②地図をクリックして場所を確定。</p>
 
@@ -654,6 +724,21 @@ function makeDivIcon(color) {
 }
 
 let pickMode = null;
+let avoidHighways = false;
+
+// ルートタイプ切り替え
+document.getElementById('rtHighway').addEventListener('click', () => {
+  avoidHighways = false;
+  document.getElementById('rtHighway').classList.add('active');
+  document.getElementById('rtGeneral').classList.remove('active');
+  updateRouteAndDistance();
+});
+document.getElementById('rtGeneral').addEventListener('click', () => {
+  avoidHighways = true;
+  document.getElementById('rtGeneral').classList.add('active');
+  document.getElementById('rtHighway').classList.remove('active');
+  updateRouteAndDistance();
+});
 
 document.getElementById('setStartBtn').addEventListener('click', () => setPickMode('start'));
 document.getElementById('setEndBtn').addEventListener('click', () => setPickMode('end'));
@@ -774,19 +859,30 @@ async function updateRouteAndDistance() {
   if (routeLine) { map.removeLayer(routeLine); routeLine = null; }
   if (!startLatLng || !endLatLng) return;
 
+  const warningEl = document.getElementById('routeFallbackWarning');
+  warningEl.style.display = 'none';
+
   try {
-    const res = await fetch(`/api/route?startLat=${startLatLng.lat}&startLng=${startLatLng.lng}&endLat=${endLatLng.lat}&endLng=${endLatLng.lng}`);
+    const params = new URLSearchParams({
+      startLat: startLatLng.lat,
+      startLng: startLatLng.lng,
+      endLat: endLatLng.lat,
+      endLng: endLatLng.lng,
+      avoidHighways: avoidHighways ? 'true' : 'false',
+    });
+    const res = await fetch(`/api/route?${params}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     if (data.error || !data.geometry || !data.geometry.length) throw new Error(data.error || 'ルート取得失敗');
 
-    routeLine = L.polyline(data.geometry, { color: '#22D3EE', weight: 3, opacity: 0.85 }).addTo(map);
+    routeLine = L.polyline(data.geometry, { color: '#22D3EE', weight: 3.5, opacity: 0.9 }).addTo(map);
     document.getElementById('distance').value = data.distanceKm.toFixed(1);
   } catch (err) {
     console.warn('道路ルートの取得に失敗したため、直線距離で代用します:', err);
-    routeLine = L.polyline([startLatLng, endLatLng], { color: '#22D3EE', weight: 2, dashArray: '6 6', opacity: 0.6 }).addTo(map);
+    routeLine = L.polyline([startLatLng, endLatLng], { color: '#FB923C', weight: 2, dashArray: '6 6', opacity: 0.7 }).addTo(map);
     const km = haversineKm(startLatLng.lat, startLatLng.lng, endLatLng.lat, endLatLng.lng);
     document.getElementById('distance').value = km.toFixed(1);
+    warningEl.style.display = 'flex';
   }
 
   map.fitBounds(routeLine.getBounds(), { padding: [24, 24] });

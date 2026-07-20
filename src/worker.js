@@ -170,8 +170,9 @@ async function updateGasPrice(env) {
   return result;
 }
 
-// /api/route?startLat=..&startLng=..&endLat=..&endLng=.. を受け取り、
+// /api/route?startLat=..&startLng=..&endLat=..&endLng=..&avoidHighways=true を受け取り、
 // OpenRouteService Directions APIで実際の道路に沿ったルートと距離を取得して返す。
+// avoidHighways=true のとき高速道路を回避するルートを返す。
 // レスポンス: { distanceKm: number, geometry: [[lat, lng], ...] }
 async function getRoute(url, env) {
   if (!env.ORS_API_KEY) {
@@ -182,19 +183,32 @@ async function getRoute(url, env) {
   const startLng = parseFloat(url.searchParams.get('startLng'));
   const endLat = parseFloat(url.searchParams.get('endLat'));
   const endLng = parseFloat(url.searchParams.get('endLng'));
+  const avoidHighways = url.searchParams.get('avoidHighways') === 'true';
 
   if ([startLat, startLng, endLat, endLng].some((v) => Number.isNaN(v))) {
     throw new Error('startLat/startLng/endLat/endLng が不正です。');
   }
 
-  // ORSは経度,緯度の順
-  const orsUrl =
-    `https://api.openrouteservice.org/v2/directions/driving-car` +
-    `?api_key=${encodeURIComponent(env.ORS_API_KEY)}` +
-    `&start=${startLng},${startLat}&end=${endLng},${endLat}`;
+  // POST形式でORS Directions APIを呼ぶ（GETより安定し、オプション指定も可能）
+  // ORSは経度,緯度の順（GeoJSON標準）
+  const body = {
+    coordinates: [[startLng, startLat], [endLng, endLat]],
+  };
+  if (avoidHighways) {
+    body.options = { avoid_features: ['highways'] };
+  }
 
-  // ORSはデフォルトのAccept(application/json)だと406エラーになるため、geo+jsonを明示的に指定する
-  const res = await fetch(orsUrl, { headers: { Accept: 'application/geo+json, application/json' } });
+  const orsUrl = `https://api.openrouteservice.org/v2/directions/driving-car`;
+  const res = await fetch(orsUrl, {
+    method: 'POST',
+    headers: {
+      'Accept': 'application/json, application/geo+json',
+      'Authorization': env.ORS_API_KEY,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`OpenRouteService APIエラー: HTTP ${res.status} ${text}`);
