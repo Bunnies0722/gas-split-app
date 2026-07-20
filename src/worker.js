@@ -8,9 +8,7 @@
  *      手動でnode実行・git push・再デプロイをする必要がなくなる。
  *
  * 3. GET /api/route で、出発地点・到着地点の緯度経度から道路に沿ったルート・距離を返す。
- *    avoidHighways=false → OSRM公開インスタンス（APIキー不要）通常の最速ルート
- *    avoidHighways=true  → OSRM + exclude=motorway（高速道路クラスを除外）
- *    いずれも外部APIキー不要。
+ *    OSRM公開インスタンス（APIキー不要）で最速ルートを返す。
  *
  * 4. /api/groups 以下のエンドポイントで、グループ（メンバー名）と精算履歴をSupabase（Postgres）に保存する。
  *    ログイン不要。グループ作成時に発行されるランダムな共有コードが、そのままアクセス権のような役割を果たす
@@ -241,101 +239,26 @@ async function routeDebug(env) {
   });
 }
 
-// /api/route?startLat=..&startLng=..&endLat=..&endLng=..&avoidHighways=true を受け取り、
-// 実際の道路に沿ったルートと距離を返す。
-//
-// ルーティングの優先順位:
-//   avoidHighways=false（デフォルト）: OSRM → 失敗時はORS → 失敗時はエラー
-//   avoidHighways=true（一般道のみ）:  ORS（avoid_features:highways） → 失敗時はOSRM → 失敗時はエラー
-//
-// OSRMはAPIキー不要で安定しているので優先的に使う。
-// ORSは高速道路回避オプションに必要なためAPIキーを持つ場合のみ利用。
-//
-// レスポンス: { distanceKm: number, geometry: [[lat, lng], ...], source: 'osrm'|'ors' }
+// /api/route?startLat=..&startLng=..&endLat=..&endLng=.. を受け取り、
+// OSRM で道路に沿った最速ルートと距離を返す（APIキー不要）。
+// レスポンス: { distanceKm: number, geometry: [[lat, lng], ...] }
 async function getRoute(url, env) {
   const startLat = parseFloat(url.searchParams.get('startLat'));
   const startLng = parseFloat(url.searchParams.get('startLng'));
   const endLat = parseFloat(url.searchParams.get('endLat'));
   const endLng = parseFloat(url.searchParams.get('endLng'));
-  const avoidHighways = url.searchParams.get('avoidHighways') === 'true';
 
   if ([startLat, startLng, endLat, endLng].some((v) => Number.isNaN(v))) {
     throw new Error('startLat/startLng/endLat/endLng が不正です。');
   }
 
-  const errors = [];
-
-  if (!avoidHighways) {
-    // 高速道路あり: OSRM 通常ルート
-    try {
-      return await fetchRouteOSRM(startLat, startLng, endLat, endLng, { excludeMotorway: false });
-    } catch (err) {
-      errors.push(err.message);
-    }
-  } else {
-    // 一般道のみ: ORS POST + ?api_key= + avoid_features:highways
-    if (env.ORS_API_KEY) {
-      try {
-        return await fetchRouteORSNoHighway(startLat, startLng, endLat, endLng, env.ORS_API_KEY);
-      } catch (err) {
-        errors.push(err.message);
-      }
-    } else {
-      errors.push('ORS_API_KEY が未設定');
-    }
-    // ORS が失敗したら OSRM 通常ルートにフォールバック（要通知）
-    try {
-      return await fetchRouteOSRM(startLat, startLng, endLat, endLng, { excludeMotorway: false, avoidanceRequested: true, avoidanceApplied: false });
-    } catch (err) {
-      errors.push(err.message);
-    }
-  }
-
-  throw new Error(`ルート取得失敗: ${errors.join(' / ')}`);
-}
-
-// ORS POST + ?api_key= + avoid_features:highways で一般道ルートを取得する。
-// Authorization ヘッダーではなく URL クエリパラメータで認証する（GETと同じ方式）。
-async function fetchRouteORSNoHighway(startLat, startLng, endLat, endLng, apiKey) {
-  const orsUrl = `https://api.openrouteservice.org/v2/directions/driving-car?api_key=${encodeURIComponent(apiKey)}`;
-  const res = await fetch(orsUrl, {
-    method: 'POST',
-    headers: {
-      'Accept': 'application/json, application/geo+json',
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      coordinates: [[startLng, startLat], [endLng, endLat]],
-      options: { avoid_features: ['highways'] },
-    }),
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`ORS HTTP ${res.status}: ${text.slice(0, 200)}`);
-  }
-  const data = await res.json();
-  const feature = data.features?.[0];
-  if (!feature) throw new Error('ORS: ルートなし');
-  const distanceKm = feature.properties.summary.distance / 1000;
-  // GeoJSONは[lng, lat]の順なので、Leafletで使う[lat, lng]の順に入れ替える
-  const geometry = feature.geometry.coordinates.map(([lng, lat]) => [lat, lng]);
-  return new Response(
-    JSON.stringify({ distanceKm, geometry, source: 'ors', avoidanceRequested: true, avoidanceApplied: true }),
-    { headers: { 'content-type': 'application/json; charset=utf-8' } }
-  );
+  return await fetchRouteOSRM(startLat, startLng, endLat, endLng);
 }
 
 // OSRM（APIキー不要）でルートを取得する。
-// excludeMotorway=true のとき exclude=motorway を付けて高速道路クラスを除外する。
-async function fetchRouteOSRM(startLat, startLng, endLat, endLng, { excludeMotorway = false, avoidanceRequested = null, avoidanceApplied = null } = {}) {
-  // avoidanceRequested/Applied の既定値を excludeMotorway から決める
-  const reqFlag  = avoidanceRequested  !== null ? avoidanceRequested  : excludeMotorway;
-  const appFlag  = avoidanceApplied    !== null ? avoidanceApplied    : excludeMotorway;
-
+async function fetchRouteOSRM(startLat, startLng, endLat, endLng) {
   // OSRMは 経度,緯度 の順
-  let osrmUrl = `https://router.project-osrm.org/route/v1/driving/${startLng},${startLat};${endLng},${endLat}?overview=full&geometries=geojson`;
-  if (excludeMotorway) osrmUrl += '&exclude=motorway';
-
+  const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${startLng},${startLat};${endLng},${endLat}?overview=full&geometries=geojson`;
   const res = await fetch(osrmUrl, {
     headers: { 'User-Agent': 'gas-split-app/1.0 (hobby project)' },
   });
@@ -349,7 +272,7 @@ async function fetchRouteOSRM(startLat, startLng, endLat, endLng, { excludeMotor
   // GeoJSONは[lng, lat]の順なので、Leafletで使う[lat, lng]の順に入れ替える
   const geometry = route.geometry.coordinates.map(([lng, lat]) => [lat, lng]);
   return new Response(
-    JSON.stringify({ distanceKm, geometry, source: 'osrm', avoidanceRequested: reqFlag, avoidanceApplied: appFlag }),
+    JSON.stringify({ distanceKm, geometry }),
     { headers: { 'content-type': 'application/json; charset=utf-8' } }
   );
 }
