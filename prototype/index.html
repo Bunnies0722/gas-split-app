@@ -532,10 +532,7 @@
 
       <div id="map"></div>
 
-      <div class="fallback-warning" id="routeFallbackWarning" style="display:none;">
-        <i class="ti ti-alert-triangle" aria-hidden="true"></i>
-        道路ルートの取得に失敗しました。直線距離で代用しています。
-      </div>
+      <div class="fallback-warning" id="routeFallbackWarning" style="display:none;"></div>
 
       <p class="map-hint">①「出発地点」または「到着地点」を押す → ②地図をクリックして場所を確定。</p>
 
@@ -871,18 +868,25 @@ async function updateRouteAndDistance() {
       avoidHighways: avoidHighways ? 'true' : 'false',
     });
     const res = await fetch(`/api/route?${params}`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) throw new Error(`サーバーエラー HTTP ${res.status}`);
     const data = await res.json();
     if (data.error || !data.geometry || !data.geometry.length) throw new Error(data.error || 'ルート取得失敗');
 
-    routeLine = L.polyline(data.geometry, { color: '#22D3EE', weight: 3.5, opacity: 0.9 }).addTo(map);
+    // 一般道のみ を選んだのに高速回避が適用されなかった場合（ORS失敗→OSRMフォールバック）
+    if (data.avoidanceRequested && !data.avoidanceApplied) {
+      routeLine = L.polyline(data.geometry, { color: '#F59E0B', weight: 3, opacity: 0.85 }).addTo(map);
+      warningEl.innerHTML = `<i class="ti ti-alert-triangle" aria-hidden="true"></i> 高速道路の回避に失敗しました。通常の最速ルートで表示しています（ORS API エラー）。`;
+      warningEl.style.display = 'flex';
+    } else {
+      routeLine = L.polyline(data.geometry, { color: '#22D3EE', weight: 3.5, opacity: 0.9 }).addTo(map);
+    }
     document.getElementById('distance').value = data.distanceKm.toFixed(1);
   } catch (err) {
     console.warn('道路ルートの取得に失敗したため、直線距離で代用します:', err);
     routeLine = L.polyline([startLatLng, endLatLng], { color: '#FB923C', weight: 2, dashArray: '6 6', opacity: 0.7 }).addTo(map);
     const km = haversineKm(startLatLng.lat, startLatLng.lng, endLatLng.lat, endLatLng.lng);
     document.getElementById('distance').value = km.toFixed(1);
-    warningEl.innerHTML = `<i class="ti ti-alert-triangle" aria-hidden="true"></i> 道路ルートの取得に失敗しました（直線距離で代用中）。詳細: ${err.message}`;
+    warningEl.innerHTML = `<i class="ti ti-alert-triangle" aria-hidden="true"></i> 道路ルートの取得に失敗しました（直線で代用中）。詳細: ${err.message}`;
     warningEl.style.display = 'flex';
   }
 
