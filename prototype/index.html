@@ -262,6 +262,24 @@
 
   .map-hint { font-size: 11px; color: var(--text-muted); line-height: 1.5; margin: 0 0 8px; }
 
+  /* ルートタイプ選択 */
+  .route-type-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .route-type-row .rt-label { font-size: 11px; color: var(--text-muted); white-space: nowrap; flex-shrink: 0; }
+  .toggle-group {
+    display: flex; gap: 4px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 8px; padding: 3px; flex: 1;
+  }
+  .toggle-btn {
+    flex: 1; padding: 6px 8px; font-size: 11.5px; font-weight: 600;
+    font-family: inherit; border: none; border-radius: 6px;
+    background: transparent; color: var(--text-muted);
+    cursor: pointer; transition: all 0.15s ease; white-space: nowrap;
+  }
+  .toggle-btn:hover { color: var(--text-secondary); }
+  .toggle-btn.active { background: var(--accent-soft); color: var(--accent); border: 1px solid var(--accent-border); }
+
   /* 直線フォールバック警告 */
   .fallback-warning {
     display: flex;
@@ -479,6 +497,14 @@
         <button id="searchBtn" type="button"><i class="ti ti-search" aria-hidden="true"></i></button>
       </div>
 
+      <div class="route-type-row">
+        <span class="rt-label">ルート</span>
+        <div class="toggle-group">
+          <button class="toggle-btn active" id="rtHighway" type="button">🛣 高速道路あり</button>
+          <button class="toggle-btn" id="rtGeneral" type="button">🚗 一般道のみ</button>
+        </div>
+      </div>
+
       <div id="map"></div>
 
       <div class="fallback-warning" id="routeFallbackWarning" style="display:none;"></div>
@@ -669,6 +695,20 @@ function makeDivIcon(color) {
   });
 }
 
+let avoidHighways = false;
+document.getElementById('rtHighway').addEventListener('click', () => {
+  avoidHighways = false;
+  document.getElementById('rtHighway').classList.add('active');
+  document.getElementById('rtGeneral').classList.remove('active');
+  updateRouteAndDistance();
+});
+document.getElementById('rtGeneral').addEventListener('click', () => {
+  avoidHighways = true;
+  document.getElementById('rtGeneral').classList.add('active');
+  document.getElementById('rtHighway').classList.remove('active');
+  updateRouteAndDistance();
+});
+
 let pickMode = null;
 document.getElementById('setStartBtn').addEventListener('click', () => setPickMode('start'));
 document.getElementById('setEndBtn').addEventListener('click', () => setPickMode('end'));
@@ -798,13 +838,28 @@ async function updateRouteAndDistance() {
       startLng: startLatLng.lng,
       endLat: endLatLng.lat,
       endLng: endLatLng.lng,
+      avoidHighways: avoidHighways ? 'true' : 'false',
     });
     const res = await fetch(`/api/route?${params}`);
     if (!res.ok) throw new Error(`サーバーエラー HTTP ${res.status}`);
     const data = await res.json();
     if (data.error || !data.geometry || !data.geometry.length) throw new Error(data.error || 'ルート取得失敗');
 
-    routeLine = L.polyline(data.geometry, { color: '#22D3EE', weight: 3.5, opacity: 0.9 }).addTo(map);
+    if (data.avoidanceApplied) {
+      // 一般道のみ（GraphHopper成功）: 緑
+      routeLine = L.polyline(data.geometry, { color: '#4ADE80', weight: 3.5, opacity: 0.9 }).addTo(map);
+      warningEl.innerHTML = `<i class="ti ti-check"></i> 一般道ルートで計算しました（高速道路除外）。`;
+      warningEl.style.cssText = 'display:flex; color:#4ADE80; background:rgba(74,222,128,0.08); border-color:rgba(74,222,128,0.25);';
+    } else if (data.avoidanceRequested && !data.avoidanceApplied) {
+      // 一般道のみ選択 → フォールバック: 黄
+      routeLine = L.polyline(data.geometry, { color: '#F59E0B', weight: 3, opacity: 0.85 }).addTo(map);
+      warningEl.innerHTML = `<i class="ti ti-alert-triangle"></i> 高速道路の回避に失敗しました。通常の最速ルートで表示しています。`;
+      warningEl.style.cssText = 'display:flex; color:#FB923C; background:rgba(251,146,60,0.08); border-color:rgba(251,146,60,0.2);';
+    } else {
+      // 高速道路あり（OSRM）: 青
+      routeLine = L.polyline(data.geometry, { color: '#22D3EE', weight: 3.5, opacity: 0.9 }).addTo(map);
+      warningEl.style.display = 'none';
+    }
     document.getElementById('distance').value = data.distanceKm.toFixed(1);
   } catch (err) {
     console.warn('道路ルートの取得に失敗したため、直線距離で代用します:', err);

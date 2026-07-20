@@ -191,47 +191,40 @@ async function routeDebug(env) {
     };
   } catch (err) { results.osrm_with_highway = { error: err.message }; }
 
-  // ORS POST + ?api_key= + avoid_features（一般道のみ）
-  if (env.ORS_API_KEY) {
+  // GraphHopper avoid=motorway（一般道のみ）
+  if (env.GRAPHHOPPER_API_KEY) {
     try {
-      const orsUrl = `https://api.openrouteservice.org/v2/directions/driving-car?api_key=${encodeURIComponent(env.ORS_API_KEY)}`;
-      const res = await fetch(orsUrl, {
-        method: 'POST',
-        headers: { 'Accept': 'application/json, application/geo+json', 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          coordinates: [[startLng, startLat], [endLng, endLat]],
-          options: { avoid_features: ['highways'] },
-        }),
-      });
+      const ghUrl = `https://graphhopper.com/api/1/route`
+        + `?key=${encodeURIComponent(env.GRAPHHOPPER_API_KEY)}`
+        + `&point=${startLat},${startLng}&point=${endLat},${endLng}`
+        + `&vehicle=car&avoid=motorway&type=json&points_encoded=false`;
+      const res = await fetch(ghUrl, { headers: { 'User-Agent': 'gas-split-app/1.0' } });
       const text = await res.text();
       let data; try { data = JSON.parse(text); } catch { data = { raw: text.slice(0, 300) }; }
-      results.ors_no_highway = {
+      results.graphhopper_no_motorway = {
         status: res.status,
-        distanceKm: data.features?.[0]?.properties?.summary?.distance
-          ? (data.features[0].properties.summary.distance / 1000).toFixed(1) : null,
-        error: data.error || data.message || null,
+        distanceKm: data.paths?.[0]?.distance ? (data.paths[0].distance / 1000).toFixed(1) : null,
+        error: data.message || null,
       };
-    } catch (err) { results.ors_no_highway = { error: err.message }; }
+    } catch (err) { results.graphhopper_no_motorway = { error: err.message }; }
 
-    // ORS POST 通常ルート（比較用）
+    // GraphHopper 通常ルート（比較用）
     try {
-      const orsUrl = `https://api.openrouteservice.org/v2/directions/driving-car?api_key=${encodeURIComponent(env.ORS_API_KEY)}`;
-      const res = await fetch(orsUrl, {
-        method: 'POST',
-        headers: { 'Accept': 'application/json, application/geo+json', 'Content-Type': 'application/json' },
-        body: JSON.stringify({ coordinates: [[startLng, startLat], [endLng, endLat]] }),
-      });
+      const ghUrl = `https://graphhopper.com/api/1/route`
+        + `?key=${encodeURIComponent(env.GRAPHHOPPER_API_KEY)}`
+        + `&point=${startLat},${startLng}&point=${endLat},${endLng}`
+        + `&vehicle=car&type=json&points_encoded=false`;
+      const res = await fetch(ghUrl, { headers: { 'User-Agent': 'gas-split-app/1.0' } });
       const data = await res.json();
-      results.ors_with_highway = {
+      results.graphhopper_with_motorway = {
         status: res.status,
-        distanceKm: data.features?.[0]?.properties?.summary?.distance
-          ? (data.features[0].properties.summary.distance / 1000).toFixed(1) : null,
-        error: data.error || data.message || null,
+        distanceKm: data.paths?.[0]?.distance ? (data.paths[0].distance / 1000).toFixed(1) : null,
+        error: data.message || null,
       };
-    } catch (err) { results.ors_with_highway = { error: err.message }; }
+    } catch (err) { results.graphhopper_with_motorway = { error: err.message }; }
   } else {
-    results.ors_no_highway = { error: 'ORS_API_KEY not set' };
-    results.ors_with_highway = { error: 'ORS_API_KEY not set' };
+    results.graphhopper_no_motorway = { error: 'GRAPHHOPPER_API_KEY not set' };
+    results.graphhopper_with_motorway = { error: 'GRAPHHOPPER_API_KEY not set' };
   }
 
   return new Response(JSON.stringify(results, null, 2), {
@@ -239,24 +232,80 @@ async function routeDebug(env) {
   });
 }
 
-// /api/route?startLat=..&startLng=..&endLat=..&endLng=.. を受け取り、
-// OSRM で道路に沿った最速ルートと距離を返す（APIキー不要）。
-// レスポンス: { distanceKm: number, geometry: [[lat, lng], ...] }
+// /api/route?startLat=..&startLng=..&endLat=..&endLng=..&avoidHighways=true を受け取り、
+// 道路に沿ったルートと距離を返す。
+//   avoidHighways=false → OSRM（APIキー不要、最速ルート）
+//   avoidHighways=true  → GraphHopper avoid=motorway → 失敗時 OSRM にフォールバック
+// レスポンス: { distanceKm, geometry: [[lat,lng],...], avoidanceRequested, avoidanceApplied }
 async function getRoute(url, env) {
   const startLat = parseFloat(url.searchParams.get('startLat'));
   const startLng = parseFloat(url.searchParams.get('startLng'));
   const endLat = parseFloat(url.searchParams.get('endLat'));
   const endLng = parseFloat(url.searchParams.get('endLng'));
+  const avoidHighways = url.searchParams.get('avoidHighways') === 'true';
 
   if ([startLat, startLng, endLat, endLng].some((v) => Number.isNaN(v))) {
     throw new Error('startLat/startLng/endLat/endLng が不正です。');
   }
 
-  return await fetchRouteOSRM(startLat, startLng, endLat, endLng);
+  if (!avoidHighways) {
+    return await fetchRouteOSRM(startLat, startLng, endLat, endLng, false);
+  }
+
+  // 一般道のみ: GraphHopper で motorway 回避
+  const errors = [];
+  if (env.GRAPHHOPPER_API_KEY) {
+    try {
+      return await fetchRouteGraphHopper(startLat, startLng, endLat, endLng, env.GRAPHHOPPER_API_KEY);
+    } catch (err) {
+      errors.push(`GraphHopper: ${err.message}`);
+    }
+  } else {
+    errors.push('GRAPHHOPPER_API_KEY が未設定');
+  }
+
+  // GraphHopper 失敗 → OSRM にフォールバック（高速回避なし・要通知）
+  console.warn('GraphHopper 失敗、OSRM にフォールバック:', errors.join(', '));
+  return await fetchRouteOSRM(startLat, startLng, endLat, endLng, true);
+}
+
+// GraphHopper（avoid=motorway）で一般道ルートを取得する。
+// 無料プラン: 500リクエスト/日。日本のOSMデータ対応。
+async function fetchRouteGraphHopper(startLat, startLng, endLat, endLng, apiKey) {
+  // GraphHopperは lat,lng の順（OSRMと逆）
+  const ghUrl = `https://graphhopper.com/api/1/route`
+    + `?key=${encodeURIComponent(apiKey)}`
+    + `&point=${startLat},${startLng}`
+    + `&point=${endLat},${endLng}`
+    + `&vehicle=car`
+    + `&avoid=motorway`
+    + `&type=json`
+    + `&points_encoded=false`;
+
+  const res = await fetch(ghUrl, {
+    headers: { 'User-Agent': 'gas-split-app/1.0 (hobby project)' },
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`HTTP ${res.status}: ${text.slice(0, 200)}`);
+  }
+  const data = await res.json();
+  if (!data.paths || !data.paths[0]) {
+    throw new Error(data.message || 'ルートなし');
+  }
+  const path = data.paths[0];
+  const distanceKm = path.distance / 1000;
+  // GeoJSONは[lng, lat]の順なので、Leafletで使う[lat, lng]の順に入れ替える
+  const geometry = path.points.coordinates.map(([lng, lat]) => [lat, lng]);
+  return new Response(
+    JSON.stringify({ distanceKm, geometry, avoidanceRequested: true, avoidanceApplied: true }),
+    { headers: { 'content-type': 'application/json; charset=utf-8' } }
+  );
 }
 
 // OSRM（APIキー不要）でルートを取得する。
-async function fetchRouteOSRM(startLat, startLng, endLat, endLng) {
+// avoidanceRequested=true のときは高速回避を試みたが失敗してフォールバックしたことを示す。
+async function fetchRouteOSRM(startLat, startLng, endLat, endLng, avoidanceRequested = false) {
   // OSRMは 経度,緯度 の順
   const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${startLng},${startLat};${endLng},${endLat}?overview=full&geometries=geojson`;
   const res = await fetch(osrmUrl, {
@@ -272,7 +321,7 @@ async function fetchRouteOSRM(startLat, startLng, endLat, endLng) {
   // GeoJSONは[lng, lat]の順なので、Leafletで使う[lat, lng]の順に入れ替える
   const geometry = route.geometry.coordinates.map(([lng, lat]) => [lat, lng]);
   return new Response(
-    JSON.stringify({ distanceKm, geometry }),
+    JSON.stringify({ distanceKm, geometry, avoidanceRequested, avoidanceApplied: false }),
     { headers: { 'content-type': 'application/json; charset=utf-8' } }
   );
 }
