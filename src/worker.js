@@ -86,10 +86,10 @@ export default {
       }
     }
 
-    // ルーティングAPIの診断エンドポイント（直線問題のデバッグ用）
-    // /api/route-debug にアクセスすると OSRM と ORS の応答を直接確認できる
+    // ルーティングAPIの診断エンドポイント
+    // /api/route-debug にアクセスすると Valhalla / OSRM の動作を直接確認できる
     if (url.pathname === '/api/route-debug') {
-      return await routeDebug(env);
+      return await routeDebug();
     }
 
     // グループ作成（メンバー名を保存する“箱”を作る）
@@ -174,6 +174,78 @@ async function updateGasPrice(env) {
 
   await commitToGitHub(env, result);
   return result;
+}
+
+// /api/route-debug: Valhalla・OSRM の動作確認（東京駅→大阪駅で両エンジンをテスト）
+async function routeDebug() {
+  const startLat = 35.6812, startLng = 139.7671; // 東京駅
+  const endLat = 34.7024, endLng = 135.4959;     // 大阪駅
+
+  const results = {};
+
+  // OSRM テスト
+  try {
+    const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${startLng},${startLat};${endLng},${endLat}?overview=false`;
+    const res = await fetch(osrmUrl, { headers: { 'User-Agent': 'gas-split-app/1.0' } });
+    const data = await res.json();
+    results.osrm = {
+      status: res.status,
+      code: data.code,
+      distanceKm: data.routes && data.routes[0] ? (data.routes[0].distance / 1000).toFixed(1) : null,
+    };
+  } catch (err) {
+    results.osrm = { error: err.message };
+  }
+
+  // Valhalla テスト（高速回避）
+  try {
+    const body = {
+      locations: [{ lat: startLat, lon: startLng }, { lat: endLat, lon: endLng }],
+      costing: 'auto',
+      costing_options: { auto: { use_highways: 0.0, use_tolls: 0.0 } },
+    };
+    const res = await fetch('https://valhalla.openstreetmap.de/route', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'User-Agent': 'gas-split-app/1.0' },
+      body: JSON.stringify(body),
+    });
+    const text = await res.text();
+    let data;
+    try { data = JSON.parse(text); } catch { data = { raw: text.slice(0, 300) }; }
+    results.valhalla_no_highway = {
+      status: res.status,
+      distanceKm: data.trip && data.trip.summary ? data.trip.summary.length.toFixed(1) : null,
+      error: data.error || null,
+      statusMessage: data.trip && data.trip.status_message || null,
+    };
+  } catch (err) {
+    results.valhalla_no_highway = { error: err.message };
+  }
+
+  // Valhalla テスト（高速あり、比較用）
+  try {
+    const body = {
+      locations: [{ lat: startLat, lon: startLng }, { lat: endLat, lon: endLng }],
+      costing: 'auto',
+    };
+    const res = await fetch('https://valhalla.openstreetmap.de/route', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'User-Agent': 'gas-split-app/1.0' },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    results.valhalla_with_highway = {
+      status: res.status,
+      distanceKm: data.trip && data.trip.summary ? data.trip.summary.length.toFixed(1) : null,
+      error: data.error || null,
+    };
+  } catch (err) {
+    results.valhalla_with_highway = { error: err.message };
+  }
+
+  return new Response(JSON.stringify(results, null, 2), {
+    headers: { 'content-type': 'application/json; charset=utf-8' },
+  });
 }
 
 // /api/route?startLat=..&startLng=..&endLat=..&endLng=..&avoidHighways=true を受け取り、

@@ -872,13 +872,27 @@ async function updateRouteAndDistance() {
     const data = await res.json();
     if (data.error || !data.geometry || !data.geometry.length) throw new Error(data.error || 'ルート取得失敗');
 
-    // 一般道のみ を選んだのに高速回避が適用されなかった場合（ORS失敗→OSRMフォールバック）
-    if (data.avoidanceRequested && !data.avoidanceApplied) {
-      routeLine = L.polyline(data.geometry, { color: '#F59E0B', weight: 3, opacity: 0.85 }).addTo(map);
-      warningEl.innerHTML = `<i class="ti ti-alert-triangle" aria-hidden="true"></i> 高速道路の回避に失敗しました。通常の最速ルートで表示しています（ORS API エラー）。`;
+    // ルートの色とバッジを source / avoidanceApplied に基づいて設定
+    if (data.source === 'valhalla' && data.avoidanceApplied) {
+      // 一般道のみ（Valhalla成功）: 緑色
+      routeLine = L.polyline(data.geometry, { color: '#4ADE80', weight: 3.5, opacity: 0.9 }).addTo(map);
+      warningEl.innerHTML = `<i class="ti ti-check" aria-hidden="true"></i> 一般道ルートで計算しました（Valhalla）。距離: ${data.distanceKm.toFixed(1)} km`;
       warningEl.style.display = 'flex';
+      warningEl.style.color = '#4ADE80';
+      warningEl.style.background = 'rgba(74,222,128,0.08)';
+      warningEl.style.borderColor = 'rgba(74,222,128,0.25)';
+    } else if (data.avoidanceRequested && !data.avoidanceApplied) {
+      // 一般道のみ を選んだのにフォールバック: 黄色
+      routeLine = L.polyline(data.geometry, { color: '#F59E0B', weight: 3, opacity: 0.85 }).addTo(map);
+      warningEl.innerHTML = `<i class="ti ti-alert-triangle" aria-hidden="true"></i> 高速道路の回避サービス（Valhalla）が応答しませんでした。通常の最速ルートで表示しています。`;
+      warningEl.style.display = 'flex';
+      warningEl.style.color = '#FB923C';
+      warningEl.style.background = 'rgba(251,146,60,0.08)';
+      warningEl.style.borderColor = 'rgba(251,146,60,0.2)';
     } else {
+      // 高速道路あり（OSRM）: 青色
       routeLine = L.polyline(data.geometry, { color: '#22D3EE', weight: 3.5, opacity: 0.9 }).addTo(map);
+      warningEl.style.display = 'none';
     }
     document.getElementById('distance').value = data.distanceKm.toFixed(1);
   } catch (err) {
